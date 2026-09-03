@@ -1,0 +1,261 @@
+"""CLI entry point: decompose, dispatch, synthesize, print a PM brief."""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import sys
+from pathlib import Path
+
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+
+from momentum_research_agent.agents.sub_agent import SubAgent, render_sub_report_markdown
+from momentum_research_agent.config import (
+    coordinator_model,
+    find_project_root,
+    load_env,
+    make_client,
+    reports_root,
+    sub_agent_model,
+)
+from momentum_research_agent.coordinator.coordinator import Coordinator, _render_synthesis_markdown
+from momentum_research_agent.coordinator.task_board import TaskBoard
+from momentum_research_agent.models.schemas import Task, UsageSummary, new_session_id
+from momentum_research_agent.tools import DEFAULT_TOOLS
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="momentum-research-agent",
+        description="Multi-agent US equity momentum tail-risk research.",
+    )
+    parser.add_argument("question", nargs="?", help="Research question to investigate.")
+    parser.add_argument(
+        "--mode",
+        choices=("team", "single"),
+        default="team",
+        help="team = coordinator + sub-agents (default); single = one ReAct loop.",
+    )
+    parser.add_argument(
+        "--session-dir",
+        type=Path,
+        help="Override output directory (default: reports/{session_id}/).",
+    )
+    parser.add_argument(
+        "--resume",
+        metavar="SESSION_ID",
+        help="Resume a previous session from its task board.",
+    )
+    parser.add_argument(
+        "--max-sub-agents",
+        type=int,
+        default=4,
+        help="Max parallel sub-agents (default: 4).",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help=f"Model for sub-agents (default: {sub_agent_model()}).",
+    )
+    parser.add_argument(
+        "--coordinator-model",
+        default=None,
+        help=f"Model for decompose/synthesize (default: {coordinator_model()}).",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show full tool-call details.",
+    )
+    return parser
+
+
+def resolve_session_dir(
+    project_root: Path,
+    session_dir: Path | None,
+    resume: str | None,
+) -> Path:
+    root = reports_root(project_root)
+    if session_dir is not None:
+        return session_dir.expanduser().resolve()
+    if resume:
+        candidate = root / resume
+        if not (candidate / "task_board.json").exists():
+            raise SystemExit(f"No task board found for session {resume}: {candidate}")
+        return candidate
+    return root / new_session_id()
+
+
+def print_banner(
+    console: Console,
+    *,
+    session_id: str,
+    mode: str,
+    model: str,
+    coordinator: str,
+    question: str,
+    session_dir: Path,
+) -> None:
+    console.print(
+        Panel.fit(
+            f"[bold]Momentum Research Agent[/bold]\n"
+            f"session   {session_id}\n"
+            f"mode      {mode}\n"
+            f"sub-model {model}\n"
+            f"coord     {coordinator}\n"
+            f"output    {session_dir}\n\n"
+            f"[italic]{question}[/italic]",
+            title="session",
+            border_style="cyan",
+        )
+    )
+
+
+async def run_single(
+    *,
+    question: str,
+    session_dir: Path,
+    client,
+    model: str,
+    project_root: Path,
+    verbose: bool,
+    console: Console,
+    usage: UsageSummary,
+) -> None:
+    task = Task(
+        title="Single-agent investigation",
+        assignment=question,
+        profile="momentum_analyst",
+    )
+    board = TaskBoard(session_dir, question=question)
+    board.add_task(task.title, task.assignment, task.profile, task_id=task.id)
+    board.activate(task.id)
+    agent = SubAgent(
+        client=client,
+        model=model,
+        project_root=project_root,
+        usage_tracker=usage,
+        verbose=verbose,
+        console=console,
+    )
+    try:
+        report = await agent.run(task, DEFAULT_TOOLS, session_dir)
+        board.complete(task.id, report.findings)
+        console.print(
+            Panel(
+                Markdown(render_sub_report_markdown(report)),
+                title="Sub-report",
+                border_style="green",
+            )
+        )
+    except Exception as exc:
+        board.fail(task.id, str(exc))
+        raise
+
+
+async def async_main(args: argparse.Namespace) -> int:
+    console = Console()
+    project_root = find_project_root()
+    load_env(project_root)
+
+    if not args.resume and not args.question:
+        console.print("[red]A research question is required unless --resume is set.[/red]")
+        return 2
+
+    session_dir = resolve_session_dir(project_root, args.session_dir, args.resume)
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "sub_reports").mkdir(exist_ok=True)
+
+    model = args.model or sub_agent_model()
+    coord_model = args.coordinator_model or coordinator_model()
+    question = args.question or ""
+
+    try:
+        client = make_client()
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/red]")
+        return 2
+
+    if args.resume:
+        board = TaskBoard.load(session_dir)
+        question = question or board.question
+    else:
+        board = None
+
+    print_banner(
+        console,
+        session_id=session_dir.name,
+        mode=args.mode,
+        model=model,
+        coordinator=coord_model,
+        question=question,
+        session_dir=session_dir,
+    )
+
+    usage = UsageSummary()
+
+    if args.mode == "single" and not args.resume:
+        await run_single(
+            question=question,
+            session_dir=session_dir,
+            client=client,
+            model=model,
+            project_root=project_root,
+            verbose=args.verbose,
+            console=console,
+            usage=usage,
+        )
+        coordinator = Coordinator(
+            session_dir=session_dir,
+            client=client,
+            question=question,
+            project_root=project_root,
+            usage_tracker=usage,
+            console=console,
+        )
+    else:
+        coordinator = Coordinator(
+            session_dir=session_dir,
+            client=client,
+            question=question,
+            project_root=project_root,
+            board=board,
+            sub_model=model,
+            coordinator_model_name=coord_model,
+            max_sub_agents=args.max_sub_agents,
+            verbose=args.verbose,
+            console=console,
+            usage_tracker=usage,
+        )
+        if args.resume:
+            report = await coordinator.resume()
+        else:
+            report = await coordinator.run(question)
+        console.print(
+            Panel(
+                Markdown(_render_synthesis_markdown(report)),
+                title="Synthesis",
+                border_style="green",
+            )
+        )
+
+    for line in coordinator.cost_summary_lines():
+        console.print(f"[bold]{line}[/bold]" if line.startswith("Token") else line)
+    console.print(f"\nSession artifacts: [cyan]{session_dir}[/cyan]")
+    return 0
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+    try:
+        raise SystemExit(asyncio.run(async_main(args)))
+    except KeyboardInterrupt:
+        print("\nInterrupted.", file=sys.stderr)
+        raise SystemExit(130) from None
+
+
+if __name__ == "__main__":
+    main()
