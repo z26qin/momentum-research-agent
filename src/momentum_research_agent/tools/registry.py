@@ -35,6 +35,10 @@ def set_tool_context(ctx: ToolContext) -> None:
     _CONTEXT.set(ctx)
 
 
+def clear_tool_context() -> None:
+    _CONTEXT.set(None)
+
+
 def get_tool_context() -> ToolContext:
     ctx = _CONTEXT.get()
     if ctx is None:
