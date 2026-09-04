@@ -56,10 +56,11 @@ Each run writes `reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/`:
 | File | Purpose |
 | --- | --- |
 | `task_board.json` | Full task history with timestamps |
-| `trajectory.jsonl` | Tool calls for this session (replay raw material) |
+| `trajectory.jsonl` | All tool calls for this session (preview) |
+| `traces.jsonl` | Full `engine_query` / `web_search` observations for replay |
 | `sub_reports/{task_id}_{profile}.json` | Canonical `ResearchReport` (Evidence[]) |
 | `sub_reports/{task_id}_{profile}.md` | Human-readable rendering of the same report |
-| `verification.json` / `verification.md` | Independent Evidence[] audit |
+| `verification.json` / `verification.md` | Session gap ledger: `gaps[]` + replayable `traces[]` + verdicts |
 | `synthesis.md` / `synthesis.json` | Final PM brief |
 
 Rejected/unchecked claims are also appended to `reports/gap_ledger.jsonl` (cross-session). The next team run may seed at most two `kind=gap` tasks from open rows. Decompose and sub-agents also read a generated `reports/profile_hints.md` overlay from that ledger and prior traces.
@@ -124,3 +125,5 @@ uv run pytest
 ## Layout
 
 See `AGENTS.md` for how to add tools, profiles, and prompts without touching orchestration code.
+
+An example compiled session ledger (engine snapshot + search observation + open gaps) lives in `examples/nvda_momentum_gap_ledger.json`.

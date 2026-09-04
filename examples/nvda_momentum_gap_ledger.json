@@ -1,0 +1,95 @@
+{
+  "question": "Is the recent NVDA selloff a momentum crash signal or a healthy rotation?",
+  "overall_status": "pass_with_caveats",
+  "summary": "Static audit of 1 evidence item(s): overall=pass_with_caveats. LLM re-check may tighten or confirm these verdicts.",
+  "verdicts": [
+    {
+      "evidence_id": "ev01",
+      "task_id": "aa11bb22",
+      "claim": "NVDA crowding is a crash signal.",
+      "status": "unchecked",
+      "notes": "No source_url or source_name",
+      "issues": [
+        "No source_url or source_name"
+      ],
+      "rechecked_source": null
+    }
+  ],
+  "unsupported_claims": [
+    "NVDA crowding is a crash signal."
+  ],
+  "missing_evidence": [],
+  "timestamp": "2026-05-29T20:15:00Z",
+  "schema_kind": "momentum_gap_ledger",
+  "gaps": [
+    {
+      "id": "760daa31",
+      "kind": "unchecked_evidence",
+      "claim": "NVDA crowding is a crash signal.",
+      "notes": "No source_url or source_name",
+      "evidence_id": "ev01",
+      "task_id": "aa11bb22",
+      "status": "unchecked",
+      "trace_ids": [
+        "253ccb48",
+        "4a25c241"
+      ]
+    },
+    {
+      "id": "ef569cf3",
+      "kind": "unanswered_question",
+      "claim": "Does FINRA SI confirm the crowding print?",
+      "notes": "Left open by momentum_analyst.",
+      "evidence_id": null,
+      "task_id": "aa11bb22",
+      "status": null,
+      "trace_ids": [
+        "253ccb48",
+        "4a25c241"
+      ]
+    }
+  ],
+  "traces": [
+    {
+      "id": "253ccb48",
+      "tool": "engine_query",
+      "arguments": {
+        "ticker": "NVDA",
+        "end": "2026-05-29"
+      },
+      "observation": "{\n  \"as_of\": \"2026-05-29\",\n  \"as_of_match\": true,\n  \"conditional_crash_frequency\": null,\n  \"crowding_score\": 0.96,\n  \"dm_bear_market_indicator\": false,\n  \"end\": \"2026-05-29\",\n  \"mechanism_scores\": {\n    \"crowded_unwind\": 96\n  },\n  \"mechanism_statuses\": {\n    \"bear_market_recovery_crash\": \"watch\",\n    \"crowded_theme_unwind\": \"triggered\"\n  },\n  \"note\": \"File adapter over momentum-tail-risk-monitor outputs.\",\n  \"pm_posture\": \"escalate_for_pm_review\",\n  \"regime\": \"FRAGILITY_BUILDING\",\n  \"risk_state\": \"normal\",\n  \"scope\": \"market_or_book\",\n  \"source\": \"momentum-tail-risk-monitor\",\n  \"source_path\": \"/Users/v/Desktop/momentum-tail-risk-monitor/outputs/latest_assessment.json\",\n  \"start\": null,\n  \"ticker\": \"NVDA\",\n  \"ticker_mentions\": [\n    \"theme_cluster\"\n  ]\n}",
+      "observation_sha256": "df8294e556e41e1604e51f612415635e687ca9a4e4a8c81aac20d018cfeca2ac",
+      "truncated": false,
+      "timestamp": "2026-05-29T20:15:00Z",
+      "agent_id": "aa11bb22",
+      "agent_role": "momentum_analyst",
+      "replay": {
+        "method": "engine_snapshot",
+        "source": "momentum-tail-risk-monitor",
+        "source_path": "/Users/v/Desktop/momentum-tail-risk-monitor/outputs/latest_assessment.json",
+        "as_of": "2026-05-29",
+        "query": null
+      }
+    },
+    {
+      "id": "4a25c241",
+      "tool": "web_search",
+      "arguments": {
+        "query": "NVDA momentum crash crowding May 2026"
+      },
+      "observation": "1. NVIDIA Announces Financial Results for First Quarter Fiscal 2027\n   https://nvidianews.nvidia.com/\n   Revenue and data-center growth beat; no unwind language.\n\n2. Tech stocks see largest hedge fund selloff in decade\n   https://www.investing.com/\n   Goldman prime-book crowding in AI/tech.",
+      "observation_sha256": "0aad5712aa424c25189cdae6b3c05d569c03e500246bea92ba3484b7d3dabf8b",
+      "truncated": false,
+      "timestamp": "2026-05-29T20:15:00Z",
+      "agent_id": "aa11bb22",
+      "agent_role": "momentum_analyst",
+      "replay": {
+        "method": "stored_observation",
+        "source": null,
+        "source_path": null,
+        "as_of": null,
+        "query": "NVDA momentum crash crowding May 2026"
+      }
+    }
+  ]
+}

@@ -10,17 +10,20 @@ from pydantic import ValidationError
 
 from momentum_research_agent.agents.audit import merge_verification, static_audit
 from momentum_research_agent.agents.budget import LoopBudget
+from momentum_research_agent.agents.ledger import finalize_ledger, record_trace
 from momentum_research_agent.agents.react_loop import react_loop
 from momentum_research_agent.agents.sub_agent import load_profile
 from momentum_research_agent.errors import AgentRuntimeError
 from momentum_research_agent.models.schemas import (
     ResearchReport,
+    ToolTrace,
     UsageSummary,
     VerificationReport,
     VerificationRunResult,
     parse_model_json,
 )
 from momentum_research_agent.state.reports import persist_verification_report
+from momentum_research_agent.state.traces import append_traces, load_traces
 from momentum_research_agent.state.trajectory import append_tool_event
 from momentum_research_agent.tools import authorize_tools
 from momentum_research_agent.tools.registry import (
@@ -95,10 +98,24 @@ class Verifier:
         static = static_audit(question, reports)
         local_usage = UsageSummary()
         tool_calls = 0
+        traces: list[ToolTrace] = []
+
+        def _persist(report: VerificationReport) -> VerificationReport:
+            if traces:
+                append_traces(session_dir, traces)
+            compiled = finalize_ledger(
+                report,
+                reports,
+                [*load_traces(session_dir), *traces],
+            )
+            persist_verification_report(session_dir, compiled)
+            return compiled
 
         if not any(report.findings for report in reports):
-            persist_verification_report(session_dir, static)
-            return VerificationRunResult(report=static, usage=local_usage, tool_calls=0)
+            compiled = _persist(static)
+            return VerificationRunResult(
+                report=compiled, usage=local_usage, tool_calls=0, traces=compiled.traces
+            )
 
         tool_names = authorize_tools(VERIFIER_PROFILE)
         definitions, registry = resolve_tools(tool_names)
@@ -121,6 +138,15 @@ class Verifier:
                 arguments=arguments,
                 result=result,
             )
+            event = record_trace(
+                name,
+                arguments,
+                result,
+                agent_id="verifier",
+                agent_role="verifier",
+            )
+            if event is not None:
+                traces.append(event)
             if self.verbose and self.console is not None:
                 preview = result if len(result) < 240 else result[:240] + "…"
                 self.console.print(f"[dim]verifier · {name}({arguments}) → {preview}[/dim]")
@@ -141,6 +167,8 @@ class Verifier:
             llm_report = parse_model_json(VerificationReport, text)
             report = merge_verification(static, llm_report, question)
         except asyncio.CancelledError:
+            if traces:
+                append_traces(session_dir, traces)
             raise
         except (AgentRuntimeError, ValidationError, ValueError) as exc:
             report = static.model_copy(
@@ -155,5 +183,10 @@ class Verifier:
                 }
             )
 
-        persist_verification_report(session_dir, report)
-        return VerificationRunResult(report=report, usage=local_usage, tool_calls=tool_calls)
+        compiled = _persist(report)
+        return VerificationRunResult(
+            report=compiled,
+            usage=local_usage,
+            tool_calls=tool_calls,
+            traces=compiled.traces,
+        )

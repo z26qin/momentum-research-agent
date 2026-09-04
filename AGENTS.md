@@ -15,11 +15,11 @@ parallel SubAgents  (+ reports/profile_hints.md overlay)
    ↓
 optional one-task replan if a research task is BLOCKED
    ↓
-Evidence[] / ResearchReport JSON  +  session trajectory.jsonl
+Evidence[] / ResearchReport JSON  +  trajectory.jsonl + traces.jsonl
    ↓
-independent Verifier
+independent Verifier  (compiles verification.json gaps[] / traces[])
    ↓
-append rejected/unchecked to gap_ledger.jsonl
+append rejected/unchecked to reports/gap_ledger.jsonl
    ↓
 optional one-round follow-up
    ↓
@@ -27,6 +27,8 @@ Coordinator synthesis
 ```
 
 `summary` is for humans. `findings: list[Evidence]` is the machine-readable source of truth. The verifier does not produce new research claims; it only judges existing `evidence_id`s. Conservative merge: static REJECTED/UNCHECKED cannot be overwritten to VERIFIED by a more optimistic LLM.
+
+`verification.json` is the in-session momentum gap ledger: `gaps[]` (rejected/unchecked/missing/unanswered/engine_mock) plus replayable `engine_query` / `web_search` `traces[]`. Live search is stored-observation replay; engine snapshots replay from `source_path` when present. Cross-session rows still go to `reports/gap_ledger.jsonl`.
 
 Follow-up is one bounded extra dispatch (default max 2 tasks) using the original analyst profiles. It does not reopen verified items, does not loop, and is skipped on a session that already has `kind=followup` tasks or a completed synthesis. AgentBus is still out of scope.
 
@@ -43,10 +45,11 @@ reports/gap_ledger.jsonl                 # cross-session rejected/unchecked clai
 reports/profile_hints.md                 # generated overlay from ledger + traces
 reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/
   task_board.json
-  trajectory.jsonl                       # tool calls for this session
+  trajectory.jsonl                       # all tool calls (preview)
+  traces.jsonl                           # full engine_query / web_search observations
   sub_reports/{task_id}_{profile}.json    # source of truth
   sub_reports/{task_id}_{profile}.md      # human rendering
-  verification.json                      # independent Evidence[] audit
+  verification.json                      # session gap ledger (gaps + traces + verdicts)
   verification.md
   synthesis.md
   synthesis.json
