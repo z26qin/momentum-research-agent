@@ -139,3 +139,4 @@ decompose → dispatch → independent Verifier（static audit + 有界 ReAct）
 | 2026-09-04 | `ef03fa5` | 8 | `main` 唯一提交：Phase 1 骨架。闭环六段均未作为代码存在。 |
 | 2026-09-04 | `ef03fa5`（main 未变） | 8 | 预评草稿 PR #2：合入后综合分约 22。正式分不改，直到该 diff 进入 `main`。 |
 | 2026-09-04 | `ef03fa5`（main 未变） | 8 | 增加 `scripts/probe_apodex_gap.py`。main 命中 5/21 信号；PR #2 命中 14/21。轨迹学习两边都是 0。 |
+| 2026-09-04 | `ef03fa5`（main 未变） | 8 | 探针加回归测试与 main/PR CI。`live_replan` 不再把「AgentBus out of scope」算命中。 |
