@@ -12,15 +12,18 @@ from pydantic import ValidationError
 
 from momentum_research_agent.agents.budget import LoopBudget
 from momentum_research_agent.agents.react_loop import react_loop
+from momentum_research_agent.agents.ledger import record_trace
 from momentum_research_agent.errors import AgentRuntimeError
 from momentum_research_agent.models.schemas import (
     AgentRunResult,
     ResearchReport,
     Task,
+    ToolTrace,
     UsageSummary,
     parse_model_json,
 )
 from momentum_research_agent.state.reports import persist_research_report
+from momentum_research_agent.state.traces import append_traces
 from momentum_research_agent.tools import authorize_research_tools
 from momentum_research_agent.tools.registry import (
     ToolContext,
@@ -151,10 +154,20 @@ class SubAgent:
 
         local_usage = UsageSummary()
         tool_calls = 0
+        traces: list[ToolTrace] = []
 
         def _on_tool(name: str, arguments: dict, result: str) -> None:
             nonlocal tool_calls
             tool_calls += 1
+            event = record_trace(
+                name,
+                arguments,
+                result,
+                agent_id=task.id,
+                agent_role=task.profile,
+            )
+            if event is not None:
+                traces.append(event)
             if self.on_progress is not None:
                 self.on_progress(task.id, tool_calls, local_usage.total_tokens)
             if self.verbose and self.console is not None:
@@ -179,12 +192,18 @@ class SubAgent:
             except ValidationError:
                 report = _fallback_report(task, text)
         except asyncio.CancelledError:
+            if traces:
+                append_traces(session_dir, traces)
             raise
         except AgentRuntimeError:
+            if traces:
+                append_traces(session_dir, traces)
             raise
 
         if self.on_progress is not None:
             self.on_progress(task.id, tool_calls, local_usage.total_tokens)
 
         persist_research_report(session_dir, task, report)
-        return AgentRunResult(report=report, usage=local_usage, tool_calls=tool_calls)
+        if traces:
+            append_traces(session_dir, traces)
+        return AgentRunResult(report=report, usage=local_usage, tool_calls=tool_calls, traces=traces)

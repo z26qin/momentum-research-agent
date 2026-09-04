@@ -32,6 +32,8 @@ Coordinator synthesis
 
 `summary` is for humans. `findings: list[Evidence]` is the machine-readable source of truth. The verifier does not produce new research claims; it only judges existing `evidence_id`s. Conservative merge: static REJECTED/UNCHECKED cannot be overwritten to VERIFIED by a more optimistic LLM.
 
+`verification.json` is the momentum gap ledger: `gaps[]` (rejected/unchecked/missing/unanswered/engine_mock) plus `traces[]` of replayable `engine_query` / `web_search` calls. Live search is stored-observation replay; engine snapshots replay from `source_path` when present.
+
 Follow-up is one bounded extra dispatch (default max 2 tasks) using the original analyst profiles. It does not reopen verified items, does not loop, and is skipped on a session that already has `kind=followup` tasks or a completed synthesis. AgentBus is still out of scope.
 
 `engine_query` reads JSON artifacts from `momentum-tail-risk-monitor` (`MOMENTUM_ENGINE_DIR`, `MOMENTUM_ENGINE_SNAPSHOT`, or a sibling checkout). It does not import or run that pipeline. No snapshot → labeled mock.
@@ -43,7 +45,8 @@ reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/
   task_board.json
   sub_reports/{task_id}_{profile}.json    # source of truth
   sub_reports/{task_id}_{profile}.md      # human rendering
-  verification.json                      # independent Evidence[] audit
+  traces.jsonl                       # append-only engine_query / web_search log
+  verification.json                  # momentum gap ledger (gaps + replayable traces + verdicts)
   verification.md
   synthesis.md
   synthesis.json

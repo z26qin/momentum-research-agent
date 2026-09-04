@@ -28,6 +28,10 @@ def new_evidence_id() -> str:
     return secrets.token_hex(4)
 
 
+def new_trace_id() -> str:
+    return secrets.token_hex(4)
+
+
 class TaskStatus(str, Enum):
     PENDING = "PENDING"
     ACTIVE = "ACTIVE"
@@ -186,6 +190,7 @@ class AgentRunResult(BaseModel):
     report: ResearchReport
     usage: UsageSummary = Field(default_factory=UsageSummary)
     tool_calls: int = 0
+    traces: list["ToolTrace"] = Field(default_factory=list)
 
 
 class VerificationStatus(str, Enum):
@@ -193,6 +198,52 @@ class VerificationStatus(str, Enum):
     WEAK = "weak"
     REJECTED = "rejected"
     UNCHECKED = "unchecked"
+
+
+class GapKind(str, Enum):
+    REJECTED_EVIDENCE = "rejected_evidence"
+    UNCHECKED_EVIDENCE = "unchecked_evidence"
+    MISSING_EVIDENCE = "missing_evidence"
+    UNANSWERED_QUESTION = "unanswered_question"
+    ENGINE_MOCK = "engine_mock"
+
+
+class ReplayHint(BaseModel):
+    """How to replay a stored engine/search observation."""
+
+    method: Literal["engine_snapshot", "stored_observation"]
+    source: str | None = None
+    source_path: str | None = None
+    as_of: str | None = None
+    query: str | None = None
+
+
+class ToolTrace(BaseModel):
+    """One replayable engine_query or web_search call."""
+
+    id: str = Field(default_factory=new_trace_id)
+    tool: Literal["engine_query", "web_search"]
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    observation: str
+    observation_sha256: str
+    truncated: bool = False
+    timestamp: datetime = Field(default_factory=utcnow)
+    agent_id: str | None = None
+    agent_role: str | None = None
+    replay: ReplayHint
+
+
+class GapEntry(BaseModel):
+    """One row in the momentum gap ledger."""
+
+    id: str = Field(default_factory=new_evidence_id)
+    kind: GapKind
+    claim: str
+    notes: str = ""
+    evidence_id: str | None = None
+    task_id: str | None = None
+    status: VerificationStatus | None = None
+    trace_ids: list[str] = Field(default_factory=list)
 
 
 class EvidenceVerdict(BaseModel):
@@ -213,12 +264,16 @@ class VerificationReport(BaseModel):
     unsupported_claims: list[str] = Field(default_factory=list)
     missing_evidence: list[str] = Field(default_factory=list)
     timestamp: datetime = Field(default_factory=utcnow)
+    schema_kind: Literal["momentum_gap_ledger"] = "momentum_gap_ledger"
+    gaps: list[GapEntry] = Field(default_factory=list)
+    traces: list[ToolTrace] = Field(default_factory=list)
 
 
 class VerificationRunResult(BaseModel):
     report: VerificationReport
     usage: UsageSummary = Field(default_factory=UsageSummary)
     tool_calls: int = 0
+    traces: list[ToolTrace] = Field(default_factory=list)
 
 
 def extract_json_text(text: str) -> str:

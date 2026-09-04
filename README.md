@@ -56,7 +56,8 @@ Each run writes `reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/`:
 | `task_board.json` | Full task history with timestamps |
 | `sub_reports/{task_id}_{profile}.json` | Canonical `ResearchReport` (Evidence[]) |
 | `sub_reports/{task_id}_{profile}.md` | Human-readable rendering of the same report |
-| `verification.json` / `verification.md` | Independent Evidence[] audit |
+| `traces.jsonl` | Append-only `engine_query` / `web_search` replay log |
+| `verification.json` / `verification.md` | Momentum gap ledger: `gaps[]` + replayable `traces[]` + verdicts |
 | `synthesis.md` / `synthesis.json` | Final PM brief |
 
 `--resume` reloads JSON reports first. Markdown-only leftovers from older sessions become a low-confidence compatibility report.
@@ -115,3 +116,5 @@ uv run pytest
 ## Layout
 
 See `AGENTS.md` for how to add tools, profiles, and prompts without touching orchestration code.
+
+An example compiled ledger (engine snapshot + search observation + open gaps) lives in `examples/nvda_momentum_gap_ledger.json`.

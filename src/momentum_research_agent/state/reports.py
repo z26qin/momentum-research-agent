@@ -123,12 +123,24 @@ def render_verification_markdown(report: VerificationReport) -> str:
     ) or "- (none)"
     unsupported = "\n".join(f"- {item}" for item in report.unsupported_claims) or "- (none)"
     missing = "\n".join(f"- {item}" for item in report.missing_evidence) or "- (none)"
+    gaps = "\n".join(
+        f"- `{item.kind.value}` {item.claim}"
+        + (f" — traces: {', '.join(f'`{tid}`' for tid in item.trace_ids)}" if item.trace_ids else "")
+        for item in report.gaps
+    ) or "- (none)"
+    traces = "\n".join(
+        f"- `{item.id}` **{item.tool}** `{item.replay.method}` "
+        f"args={item.arguments} sha256={item.observation_sha256[:12]}…"
+        for item in report.traces
+    ) or "- (none)"
     return (
-        f"# Verification\n\n"
+        f"# Momentum gap ledger\n\n"
         f"**Question:** {report.question}\n\n"
         f"**Overall:** {report.overall_status}\n\n"
         f"**Timestamp:** {report.timestamp.isoformat()}\n\n"
         f"## Summary\n\n{report.summary}\n\n"
+        f"## Gaps\n\n{gaps}\n\n"
+        f"## Replayable traces\n\n{traces}\n\n"
         f"## Verdicts\n\n{rows}\n\n"
         f"## Unsupported Claims\n\n{unsupported}\n\n"
         f"## Missing Evidence\n\n{missing}\n"

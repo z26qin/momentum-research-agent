@@ -231,6 +231,8 @@ class Coordinator:
             raise
         except Exception as exc:
             from momentum_research_agent.agents.audit import static_audit
+            from momentum_research_agent.agents.ledger import finalize_ledger
+            from momentum_research_agent.state.traces import load_traces
 
             report = static_audit(self.board.question, reports)
             report = report.model_copy(
@@ -241,6 +243,7 @@ class Coordinator:
                     ),
                 }
             )
+            report = finalize_ledger(report, reports, load_traces(self.session_dir))
             persist_verification_report(self.session_dir, report)
             self.verification = report
             self.console.print(f"[red]Verifier failed:[/red] {exc}")
