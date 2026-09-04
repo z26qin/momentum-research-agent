@@ -13,6 +13,7 @@ from momentum_research_agent.models.schemas import (
 from momentum_research_agent.state.gap_ledger import (
     append_from_verification,
     classify_gap,
+    failure_brief,
     mark_consumed,
     open_gaps,
 )
@@ -74,3 +75,36 @@ def test_mark_consumed_closes_row(tmp_path: Path) -> None:
     assert closed[0].state is GapState.CONSUMED
     assert closed[0].consumed_by == "sess-b"
     assert open_gaps(path) == []
+
+
+def test_failure_brief_lists_open_then_consumed(tmp_path: Path) -> None:
+    path = tmp_path / "gap_ledger.jsonl"
+    append_from_verification(
+        path,
+        _verification(
+            EvidenceVerdict(
+                evidence_id="e1",
+                claim="crowding is elevated",
+                status=VerificationStatus.REJECTED,
+                notes="no url",
+            )
+        ),
+        "sess-a",
+    )
+    mark_consumed(path, ["e1"], "sess-b")
+    append_from_verification(
+        path,
+        _verification(
+            EvidenceVerdict(
+                evidence_id="e2",
+                claim="Daniel-Moskowitz unwind",
+                status=VerificationStatus.UNCHECKED,
+            )
+        ),
+        "sess-c",
+    )
+    brief = failure_brief(path)
+    assert "OPEN unwind_crash" in brief
+    assert "CONSUMED crowding" in brief
+    assert "e2" in brief
+    assert "e1" in brief

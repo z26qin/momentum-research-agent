@@ -23,6 +23,7 @@ from momentum_research_agent.coordinator.followup import (
     is_followup_task,
 )
 from momentum_research_agent.coordinator.gap_tasks import MAX_GAP_SEED_TASKS, gap_task_specs
+from momentum_research_agent.coordinator.replan import already_replanned, replan_specs
 from momentum_research_agent.coordinator.task_board import TaskBoard
 from momentum_research_agent.models.schemas import (
     AgentRunResult,
@@ -44,6 +45,10 @@ from momentum_research_agent.state.gap_ledger import (
     open_gaps,
 )
 from momentum_research_agent.state.persistence import save_text
+from momentum_research_agent.state.prompt_memory import (
+    decompose_user_message,
+    refresh_profile_hints,
+)
 from momentum_research_agent.state.reports import (
     load_research_report,
     load_verification_report,
@@ -98,6 +103,7 @@ class Coordinator:
         await self.decompose(question)
         self.seed_from_ledger()
         await self.dispatch_all()
+        await self.replan_blocked()
         await self.verify()
         self._record_gaps()
         if await self.follow_up():
@@ -116,11 +122,13 @@ class Coordinator:
         if pending:
             self.board.requeue_unfinished()
             await self.dispatch_all()
+            await self.replan_blocked()
             ran_dispatch = True
         elif not self.board.tasks:
             await self.decompose(self.board.question)
             self.seed_from_ledger()
             await self.dispatch_all()
+            await self.replan_blocked()
             ran_dispatch = True
         self._load_existing_sub_reports()
         existing_verification = load_verification_report(self.session_dir)
@@ -147,7 +155,10 @@ class Coordinator:
 
     async def decompose(self, question: str) -> list[Task]:
         system_prompt = (PROMPTS_DIR / "decompose.md").read_text(encoding="utf-8")
-        user_message = f"Research question:\n\n{question}"
+        user_message = decompose_user_message(
+            question, self.project_root, self.session_dir
+        )
+        refresh_profile_hints(self.project_root, self.session_dir)
         result = await self._complete_json(
             system_prompt,
             user_message,
@@ -209,6 +220,27 @@ class Coordinator:
                 f"[bold]Gap ledger[/bold] — recorded {len(written)} open gap(s) "
                 f"at {ledger_path(self.project_root)}"
             )
+            refresh_profile_hints(self.project_root, self.session_dir)
+
+    async def replan_blocked(self) -> bool:
+        """One extra dispatch for BLOCKED runtime failures. Not follow-up, not GAP."""
+        if already_replanned(self.board.tasks):
+            return False
+        specs = replan_specs(self.board.blocked, self.board.question, max_tasks=1)
+        if not specs:
+            return False
+        self.console.print(
+            f"[bold]Replan[/bold] — {len(specs)} task(s) for BLOCKED work"
+        )
+        for spec in specs:
+            self.board.add_task(
+                spec.title,
+                spec.assignment,
+                spec.profile,
+                kind=spec.kind,
+            )
+        await self.dispatch_all()
+        return True
 
     async def dispatch_all(self) -> None:
         for task in list(self.board.pending):

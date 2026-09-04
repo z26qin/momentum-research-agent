@@ -73,6 +73,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show full tool-call details.",
     )
+    parser.add_argument(
+        "--eval",
+        action="store_true",
+        help="Run frozen momentum engine/V_D eval and append failures to the gap ledger.",
+    )
     return parser
 
 
@@ -189,6 +194,20 @@ async def async_main(args: argparse.Namespace) -> int:
     console = Console()
     project_root = find_project_root()
     load_env(project_root)
+
+    if args.eval:
+        from momentum_research_agent.eval.momentum_eval import run_eval
+
+        summary = run_eval(project_root)
+        for item in summary.results:
+            mark = "pass" if item.passed else "FAIL"
+            extra = f" — {'; '.join(item.reasons)}" if item.reasons else ""
+            console.print(f"{mark}  {item.case_id}{extra}")
+        console.print(
+            f"{summary.passed}/{len(summary.results)} passed; "
+            f"{summary.written} gap(s) written to {project_root / 'reports' / 'gap_ledger.jsonl'}"
+        )
+        return 0 if summary.failed == 0 else 1
 
     if not args.resume and not args.question:
         console.print("[red]A research question is required unless --resume is set.[/red]")

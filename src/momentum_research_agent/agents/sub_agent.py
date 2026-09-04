@@ -20,6 +20,7 @@ from momentum_research_agent.models.schemas import (
     UsageSummary,
     parse_model_json,
 )
+from momentum_research_agent.state.prompt_memory import load_profile_hints
 from momentum_research_agent.state.reports import persist_research_report
 from momentum_research_agent.state.trajectory import append_tool_event
 from momentum_research_agent.tools import authorize_research_tools
@@ -40,7 +41,11 @@ def load_profile(profile: str, project_root: Path) -> str:
     ]
     for path in candidates:
         if path.exists():
-            return path.read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8")
+            hints = load_profile_hints(project_root)
+            if hints:
+                return text.rstrip() + "\n\n" + hints + "\n"
+            return text
     known = ", ".join(p.stem for p in (Path(__file__).parent / "profiles").glob("*.md"))
     raise FileNotFoundError(f"Unknown profile '{profile}'. Available: {known}")
 

@@ -7,13 +7,15 @@ This repository is a thin, purpose-built multi-agent research system for US equi
 ```
 Question
    ↓
-Coordinator
+Coordinator.decompose  (injects gap_ledger + prior trajectory briefs)
    ↓
 TaskBoard  (+ optional GAP tasks from reports/gap_ledger.jsonl)
    ↓
-parallel SubAgents  → session trajectory.jsonl
+parallel SubAgents  (+ reports/profile_hints.md overlay)
    ↓
-Evidence[] / ResearchReport JSON
+optional one-task replan if a research task is BLOCKED
+   ↓
+Evidence[] / ResearchReport JSON  +  session trajectory.jsonl
    ↓
 independent Verifier
    ↓
@@ -28,14 +30,17 @@ Coordinator synthesis
 
 Follow-up is one bounded extra dispatch (default max 2 tasks) using the original analyst profiles. It does not reopen verified items, does not loop, and is skipped on a session that already has `kind=followup` tasks or a completed synthesis. AgentBus is still out of scope.
 
-Cross-session gaps are different: after verification, rejected/unchecked claims are appended to `reports/gap_ledger.jsonl`. The *next* run may seed at most 2 `kind=gap` tasks from open rows, then mark those rows consumed. That is not a second follow-up round inside the same session.
+Replan is a different one-shot: after the first dispatch wave, if a task is BLOCKED at runtime, the Coordinator may add at most one `kind=replan` replacement and dispatch it. That is not a second follow-up and not an AgentBus.
 
-`engine_query` reads JSON artifacts from `momentum-tail-risk-monitor` (`MOMENTUM_ENGINE_DIR`, `MOMENTUM_ENGINE_SNAPSHOT`, or a sibling checkout). It does not import or run that pipeline. No snapshot → labeled mock.
+Cross-session gaps are different: after verification, rejected/unchecked claims are appended to `reports/gap_ledger.jsonl`. The *next* run may seed at most 2 `kind=gap` tasks from open rows, then mark those rows consumed. Decompose also sees a `failure_brief` of open/recent gaps. That is not a second follow-up round inside the same session.
+
+`engine_query` reads JSON artifacts from `momentum-tail-risk-monitor` (`MOMENTUM_ENGINE_DIR`, `MOMENTUM_ENGINE_SNAPSHOT`, or a sibling checkout). It does not import or run that pipeline. No snapshot → labeled mock. Every payload includes a delivery contract `V_D` (`pass` | `pass_with_caveats` | `fail`). Frozen eval (`momentum-research-agent --eval`) grades DM/crowding/unwind fixtures and appends failures to the ledger.
 
 ## Artifacts
 
 ```
 reports/gap_ledger.jsonl                 # cross-session rejected/unchecked claims
+reports/profile_hints.md                 # generated overlay from ledger + traces
 reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/
   task_board.json
   trajectory.jsonl                       # tool calls for this session
@@ -110,4 +115,4 @@ Do not hit the live DeepSeek API in unit tests.
 
 ## What not to build here
 
-No AgentBus, SpawnGuard, verifier-of-the-verifier, web UI, Docker, database, MCP server, or extra agent frameworks. Follow-up research is the one bounded round above — do not turn it into an unbounded loop. The gap ledger only seeds the next session, and is capped.
+No AgentBus, SpawnGuard, verifier-of-the-verifier, web UI, Docker, database, MCP server, or extra agent frameworks. Follow-up research is the one bounded round above — do not turn it into an unbounded loop. Replan is the one BLOCKED retry above. The gap ledger only seeds the next session, and is capped.

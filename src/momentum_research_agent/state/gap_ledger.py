@@ -68,6 +68,44 @@ def open_gaps(path: Path) -> list[GapRecord]:
     return [item for item in load_ledger(path).values() if item.state is GapState.OPEN]
 
 
+def failure_brief(
+    path: Path,
+    *,
+    max_open: int = 4,
+    max_consumed: int = 2,
+) -> str:
+    """Compact ledger digest for the next decompose call.
+
+    Open rows first (the next run still sees them before seed_from_ledger
+    consumes a subset). Recently consumed rows are a short memory of what
+    was already retried.
+    """
+    by_id = load_ledger(path)
+    if not by_id:
+        return ""
+    open_rows = [item for item in by_id.values() if item.state is GapState.OPEN]
+    consumed = [item for item in by_id.values() if item.state is GapState.CONSUMED]
+    open_rows = open_rows[-max_open:]
+    consumed = consumed[-max_consumed:]
+    lines: list[str] = []
+    for item in open_rows:
+        lines.append(_brief_line("OPEN", item))
+    for item in consumed:
+        lines.append(_brief_line("CONSUMED", item))
+    return "\n".join(lines)
+
+
+def _brief_line(label: str, item: GapRecord) -> str:
+    claim = item.claim.strip().replace("\n", " ")
+    if len(claim) > 80:
+        claim = claim[:77] + "..."
+    extra = f" ({item.notes})" if item.notes else ""
+    return (
+        f"{label} {item.capability.value} [{item.status.value}] "
+        f"{item.evidence_id}: {claim}{extra}"
+    )
+
+
 def append_from_verification(
     path: Path,
     verification: VerificationReport,

@@ -61,6 +61,8 @@ async def test_engine_query_falls_back_to_labeled_mock(
     assert payload["dm_bear_market_indicator"] == (
         payload["risk_state"] in {"bear_low_volatility", "panic_elevated"}
     )
+    assert payload["delivery_contract"]["verdict"] == "pass_with_caveats"
+    assert payload["delivery_contract"]["contract"] == "V_D"
 
 
 @pytest.mark.asyncio
@@ -82,6 +84,8 @@ async def test_engine_query_reads_latest_assessment(
     assert "theme_cluster" in payload["ticker_mentions"]
     assert payload["as_of"] == "2026-05-29"
     assert payload["as_of_match"] is True
+    assert payload["delivery_contract"]["verdict"] in {"pass", "pass_with_caveats"}
+    assert payload["delivery_contract"]["contract"] == "V_D"
 
 
 def test_select_prefers_matching_snapshot(

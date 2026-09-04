@@ -15,6 +15,7 @@ from momentum_research_agent.models.schemas import (
     EvidenceStance,
     EvidenceVerdict,
     ResearchReport,
+    TaskKind,
     UsageSummary,
     VerificationReport,
     VerificationRunResult,
@@ -378,3 +379,85 @@ def test_seed_from_ledger_consumes_open_gaps(tmp_path: Path) -> None:
     assert created[0].kind is TaskKind.GAP
     assert created[0].title.startswith("Gap:")
     assert open_gaps(ledger_path(tmp_path)) == []
+
+
+@pytest.mark.asyncio
+async def test_decompose_injects_ledger_brief(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from momentum_research_agent.state.gap_ledger import append_from_verification, ledger_path
+
+    append_from_verification(
+        ledger_path(tmp_path),
+        VerificationReport(
+            question="prior",
+            overall_status="fail",
+            summary="prior",
+            verdicts=[
+                EvidenceVerdict(
+                    evidence_id="gap1",
+                    claim="crowding still elevated",
+                    status=VerificationStatus.REJECTED,
+                    notes="no url",
+                )
+            ],
+        ),
+        "prior-session",
+    )
+    session_dir = tmp_path / "session"
+    client = FakeClient([DECOMPOSE, SYNTHESIS])
+    coordinator = Coordinator(
+        session_dir=session_dir,
+        client=client,  # type: ignore[arg-type]
+        question="Is the NVDA selloff a crash?",
+        project_root=tmp_path,
+        usage_tracker=UsageSummary(),
+    )
+
+    async def fake_run(self, task, tools, session_dir):
+        result = _run_result(task, 10, 5)
+        persist_research_report(session_dir, task, result.report)
+        return result
+
+    _patch_runtime(monkeypatch, fake_run)
+    await coordinator.run("Is the NVDA selloff a crash?")
+    user = client.completions.calls[0]["messages"][1]["content"]
+    assert "Known gaps from prior sessions" in user
+    assert "crowding still elevated" in user
+    assert any(task.kind is TaskKind.GAP for task in coordinator.board.tasks)
+
+
+@pytest.mark.asyncio
+async def test_replan_retries_blocked_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_dir = tmp_path / "session"
+    client = FakeClient([DECOMPOSE, SYNTHESIS])
+    coordinator = Coordinator(
+        session_dir=session_dir,
+        client=client,  # type: ignore[arg-type]
+        question="Is the NVDA selloff a crash?",
+        project_root=tmp_path,
+        usage_tracker=UsageSummary(),
+    )
+
+    async def fake_run(self, task, tools, session_dir):
+        if task.kind is TaskKind.REPLAN:
+            result = _run_result(task, 10, 5)
+            persist_research_report(session_dir, task, result.report)
+            return result
+        if task.profile == "momentum_analyst":
+            raise RuntimeError("engine timeout")
+        result = _run_result(task, 20, 10)
+        persist_research_report(session_dir, task, result.report)
+        return result
+
+    _patch_runtime(monkeypatch, fake_run)
+    await coordinator.run("Is the NVDA selloff a crash?")
+    replans = [task for task in coordinator.board.tasks if task.kind is TaskKind.REPLAN]
+    assert len(replans) == 1
+    assert replans[0].status.value == "COMPLETED"
+    assert "engine timeout" in replans[0].assignment
+    blocked = [task for task in coordinator.board.tasks if task.status.value == "BLOCKED"]
+    assert len(blocked) == 1
+    assert await coordinator.replan_blocked() is False

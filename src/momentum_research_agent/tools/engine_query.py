@@ -13,6 +13,7 @@ from momentum_research_agent.tools.engine_adapter import (
     MECHANICAL_UNWIND_REGIMES,
     load_engine_state,
 )
+from momentum_research_agent.tools.engine_contract import attach_delivery_contract
 from momentum_research_agent.tools.registry import get_tool_context, register_tool
 
 
@@ -57,8 +58,10 @@ def _project_root() -> Path | None:
         "risk state (normal | bear_low_volatility | panic_elevated), mechanical "
         "unwind regime, and crowding overlays. Reads momentum-tail-risk-monitor "
         "JSON snapshots when available (MOMENTUM_ENGINE_DIR or a sibling checkout). "
-        "The engine is market/book-level, not a single-name API. Falls back to "
-        "labeled mock data that uses the same DM vocabulary if no snapshot is found."
+        "The engine is market/book-level, not a single-name API. Each payload "
+        "includes delivery_contract V_D (pass | pass_with_caveats | fail). "
+        "Falls back to labeled mock data that uses the same DM vocabulary if "
+        "no snapshot is found."
     ),
     parameters={
         "type": "object",
@@ -81,19 +84,15 @@ def _project_root() -> Path | None:
 )
 async def engine_query(ticker: str, start: str | None = None, end: str | None = None) -> str:
     live = load_engine_state(ticker, start, end, project_root=_project_root())
-    if live is not None:
-        return json.dumps(live, indent=2)
-    return json.dumps(
-        _mock_state(
-            ticker,
-            start,
-            end,
-            reason=(
-                "MOCK DATA — no momentum-tail-risk-monitor snapshot found. "
-                "Labels use the same Daniel–Moskowitz vocabulary as live snapshots, "
-                "but values are synthetic. Set MOMENTUM_ENGINE_DIR or place the "
-                "engine repo beside this project."
-            ),
+    payload = live if live is not None else _mock_state(
+        ticker,
+        start,
+        end,
+        reason=(
+            "MOCK DATA — no momentum-tail-risk-monitor snapshot found. "
+            "Labels use the same Daniel–Moskowitz vocabulary as live snapshots, "
+            "but values are synthetic. Set MOMENTUM_ENGINE_DIR or place the "
+            "engine repo beside this project."
         ),
-        indent=2,
     )
+    return json.dumps(attach_delivery_contract(payload, requested_end=end), indent=2)

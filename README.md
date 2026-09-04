@@ -11,9 +11,11 @@ question
    │
    ▼
 Coordinator (deepseek-reasoner)
-   ├─ decompose → TaskBoard (disk)
+   ├─ decompose → TaskBoard (disk; sees prior gap ledger + traces)
+   ├─ gap seed  → at most two kind=gap tasks from reports/gap_ledger.jsonl
    ├─ dispatch  → bounded SubAgents in parallel (deepseek-chat, ReAct + allowlisted tools)
    │                └─ ResearchReport { findings: Evidence[], summary, status }
+   ├─ replan    → at most one kind=replan task if a research task is BLOCKED
    ├─ verify    → independent Verifier (static audit + ReAct re-check of Evidence[])
    ├─ follow-up → at most one extra dispatch on rejected/unchecked evidence
    └─ synthesize → reports/{session}/synthesis.md
@@ -40,10 +42,10 @@ uv run momentum-research-agent "Is the recent NVDA selloff a momentum crash sign
 
 uv run momentum-research-agent --mode single "Analyze NVDA credit risk"
 
-uv run momentum-research-agent --resume 20260903_171500_ab12cd34
+uv run momentum-research-agent --eval
 ```
 
-Flags: `--mode team|single`, `--session-dir`, `--resume`, `--max-sub-agents`, `--model`, `--coordinator-model`, `--verbose`.
+Flags: `--mode team|single`, `--session-dir`, `--resume`, `--max-sub-agents`, `--model`, `--coordinator-model`, `--verbose`, `--eval`.
 
 On startup the CLI prints a Rich banner, a decomposition table, live task-board updates during dispatch, a synthesis panel, a token/cost summary, and the session path.
 
@@ -60,7 +62,7 @@ Each run writes `reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/`:
 | `verification.json` / `verification.md` | Independent Evidence[] audit |
 | `synthesis.md` / `synthesis.json` | Final PM brief |
 
-Rejected/unchecked claims are also appended to `reports/gap_ledger.jsonl` (cross-session). The next team run may seed at most two `kind=gap` tasks from open rows.
+Rejected/unchecked claims are also appended to `reports/gap_ledger.jsonl` (cross-session). The next team run may seed at most two `kind=gap` tasks from open rows. Decompose and sub-agents also read a generated `reports/profile_hints.md` overlay from that ledger and prior traces.
 
 `--resume` reloads JSON reports first. Markdown-only leftovers from older sessions become a low-confidence compatibility report.
 
@@ -70,13 +72,17 @@ Each sub-agent is capped by `LoopBudget`: 8 ReAct turns, 45s overall deadline, 2
 
 After verification, the coordinator may dispatch at most one extra follow-up round (default 2 tasks) for `rejected` / `unchecked` evidence, then re-verify once. Verified items are not reopened. `--mode single` does not follow up.
 
+Separately, open rows in `gap_ledger.jsonl` may become up to two `kind=gap` tasks at the *start* of the next run. That is the next-session seed, not a second in-session loop. After the first dispatch wave, at most one `kind=replan` task may retry a BLOCKED runtime failure.
+
+`--eval` grades frozen Daniel–Moskowitz / crowding / unwind fixtures (including delivery contract `V_D`) and appends failures to `reports/gap_ledger.jsonl`. It does not call DeepSeek.
+
 ## Tools
 
 | Tool | Behavior |
 | --- | --- |
 | `web_search` | Serper, then Tavily. Clear error if neither key is set. |
 | `file_reader` | `.md` `.txt` `.csv` (first 100 rows) `.json`. Refuses paths outside the project. |
-| `engine_query` | Reads `momentum-tail-risk-monitor` snapshots (`latest_assessment.json` / dated `structured_snapshot.json`). Market/book-level, not a ticker API. Labeled mock if no snapshot is found. |
+| `engine_query` | Reads `momentum-tail-risk-monitor` snapshots (`latest_assessment.json` / dated `structured_snapshot.json`). Market/book-level, not a ticker API. Labeled mock if no snapshot is found. Attaches `delivery_contract` `V_D`. |
 | `market_data` | yfinance OHLCV table (period default `3mo`). |
 | `shell` | Implemented but **not** assigned to research profiles. Not used in normal flows. |
 

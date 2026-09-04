@@ -15,6 +15,12 @@ For each task, specify:
   - flow_analyst: FINRA short interest, ETF flows, options positioning
   - technicals_analyst: technical levels, volume patterns, volatility regime
 
+If the user message includes known gaps from prior sessions or tool-trace
+failure patterns, bias the 2-5 tasks toward those failure modes (crowding,
+unwind/crash, engine freshness, source quality). Do not emit tasks titled
+"Gap:" — the Coordinator seeds those separately from the ledger. Do not add
+an extra in-session loop.
+
 Respond with valid JSON matching this schema:
 {
   "reasoning": "why this decomposition",
