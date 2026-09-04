@@ -16,6 +16,7 @@ from momentum_research_agent.tools.engine_query import engine_query
 
 def _isolate_engine_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(tmp_path / "missing-engine"))
+    monkeypatch.setenv("MOMENTUM_DISABLE_LOCAL_DM", "1")
     monkeypatch.delenv("MOMENTUM_ENGINE_SNAPSHOT", raising=False)
 
 
@@ -63,6 +64,37 @@ async def test_engine_query_falls_back_to_labeled_mock(
     )
     assert payload["delivery_contract"]["verdict"] == "pass_with_caveats"
     assert payload["delivery_contract"]["contract"] == "V_D"
+
+
+@pytest.mark.asyncio
+async def test_engine_query_uses_local_dm_when_no_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from momentum_research_agent.tools.local_dm import geometric_closes, score_from_closes
+
+    monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(tmp_path / "missing-engine"))
+    monkeypatch.delenv("MOMENTUM_ENGINE_SNAPSHOT", raising=False)
+    monkeypatch.delenv("MOMENTUM_DISABLE_LOCAL_DM", raising=False)
+    path = geometric_closes(
+        n=520,
+        start=100.0,
+        daily_mu=-0.001,
+        shocks=(0.02, -0.02),
+        end="2026-05-29",
+        crash_days=21,
+        crash_mu=-0.025,
+    )
+    local = score_from_closes("NVDA", path, path, end="2026-05-29")
+    monkeypatch.setattr(
+        "momentum_research_agent.tools.engine_query.score_local_dm",
+        lambda *args, **kwargs: local,
+    )
+    raw = await engine_query("NVDA", end="2026-05-29")
+    payload = json.loads(raw)
+    assert payload["source"] == "local_dm"
+    assert payload["risk_state"] == "panic_elevated"
+    assert payload["regime"] == "UNWIND"
+    assert payload["delivery_contract"]["verdict"] == "pass"
 
 
 @pytest.mark.asyncio

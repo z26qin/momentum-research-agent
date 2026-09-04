@@ -2,7 +2,7 @@
 
 Multi-agent investigation system for US equity momentum tail-risk. A coordinator decomposes a research question, runs independent analyst sub-agents in parallel, and synthesizes a structured PM brief.
 
-This is an original, purpose-built orchestration layer. It sits on top of a deterministic momentum tail-risk engine (Daniel–Moskowitz risk state, FINRA/GDELT overlays, triggered evidence). `engine_query` reads JSON snapshots from `momentum-tail-risk-monitor` when that repo (or `MOMENTUM_ENGINE_DIR`) is available, and falls back to labeled mock data otherwise.
+This is an original, purpose-built orchestration layer. It sits on top of a deterministic momentum tail-risk engine (Daniel–Moskowitz risk state, FINRA/GDELT overlays, triggered evidence). `engine_query` reads JSON snapshots from `momentum-tail-risk-monitor` when that repo (or `MOMENTUM_ENGINE_DIR`) is available, otherwise runs a local DM scorer on SPY + ticker closes, and falls back to labeled mock data only if prices are unavailable.
 
 ## Architecture
 
@@ -82,7 +82,7 @@ Separately, open rows in `gap_ledger.jsonl` may become up to two `kind=gap` task
 | --- | --- |
 | `web_search` | Serper, then Tavily. Clear error if neither key is set. |
 | `file_reader` | `.md` `.txt` `.csv` (first 100 rows) `.json`. Refuses paths outside the project. |
-| `engine_query` | Reads `momentum-tail-risk-monitor` snapshots (`latest_assessment.json` / dated `structured_snapshot.json`). Market/book-level, not a ticker API. Labeled mock if no snapshot is found. Attaches `delivery_contract` `V_D`. |
+| `engine_query` | Prefers `momentum-tail-risk-monitor` snapshots; else a local DM scorer on SPY + ticker closes; labeled mock only if both fail. Attaches `delivery_contract` `V_D`. |
 | `market_data` | yfinance OHLCV table (period default `3mo`). |
 | `shell` | Implemented but **not** assigned to research profiles. Not used in normal flows. |
 

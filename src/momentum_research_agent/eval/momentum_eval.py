@@ -19,6 +19,7 @@ from momentum_research_agent.state.gap_ledger import append_from_verification, l
 from momentum_research_agent.tools.engine_adapter import normalize_engine_payload
 from momentum_research_agent.tools.engine_contract import attach_delivery_contract, grade_engine_payload
 from momentum_research_agent.tools.engine_query import _mock_state
+from momentum_research_agent.tools.local_dm import geometric_closes, score_from_closes
 
 EVAL_SESSION_ID = "eval"
 
@@ -115,6 +116,27 @@ CASES: tuple[EvalCase, ...] = (
             "mechanism_scores": {"crowded_unwind": 80},
         },
         expect_source="momentum-tail-risk-monitor",
+        expect_risk_state="panic_elevated",
+        expect_regime="UNWIND",
+        expect_contract="pass",
+    ),
+    EvalCase(
+        id="local_dm_panic_unwind",
+        payload=score_from_closes(
+            "NVDA",
+            geometric_closes(
+                n=520,
+                start=100.0,
+                daily_mu=-0.001,
+                shocks=(0.02, -0.02),
+                end="2026-05-29",
+                crash_days=21,
+                crash_mu=-0.025,
+            ),
+            end="2026-05-29",
+        )
+        or {},
+        expect_source="local_dm",
         expect_risk_state="panic_elevated",
         expect_regime="UNWIND",
         expect_contract="pass",

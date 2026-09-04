@@ -34,7 +34,7 @@ Replan is a different one-shot: after the first dispatch wave, if a task is BLOC
 
 Cross-session gaps are different: after verification, rejected/unchecked claims are appended to `reports/gap_ledger.jsonl`. The *next* run may seed at most 2 `kind=gap` tasks from open rows, then mark those rows consumed. Decompose also sees a `failure_brief` of open/recent gaps. That is not a second follow-up round inside the same session.
 
-`engine_query` reads JSON artifacts from `momentum-tail-risk-monitor` (`MOMENTUM_ENGINE_DIR`, `MOMENTUM_ENGINE_SNAPSHOT`, or a sibling checkout). It does not import or run that pipeline. No snapshot → labeled mock. Every payload includes a delivery contract `V_D` (`pass` | `pass_with_caveats` | `fail`). Frozen eval (`momentum-research-agent --eval`) grades DM/crowding/unwind fixtures and appends failures to the ledger.
+`engine_query` prefers JSON artifacts from `momentum-tail-risk-monitor` (`MOMENTUM_ENGINE_DIR`, `MOMENTUM_ENGINE_SNAPSHOT`, or a sibling checkout). If none exist, it runs a local Daniel–Moskowitz scorer on SPY + ticker closes (24m bear + 6m vol → `risk_state`; 1m drawdown → unwind regime). Labeled mock only if prices are unavailable. Every payload includes a delivery contract `V_D` (`pass` | `pass_with_caveats` | `fail`). Frozen eval (`momentum-research-agent --eval`) grades DM/crowding/unwind fixtures — including the local scorer — and appends failures to the ledger.
 
 ## Artifacts
 
