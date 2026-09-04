@@ -10,10 +10,13 @@ from momentum_research_agent.state.reports import (
     persist_verification_report,
     load_verification_report,
 )
+from momentum_research_agent.state.traces import append_traces, load_traces
 
 __all__ = [
+    "append_traces",
     "load_json",
     "load_research_report",
+    "load_traces",
     "load_verification_report",
     "persist_research_report",
     "persist_verification_report",
