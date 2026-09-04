@@ -118,6 +118,45 @@
       ]
     }
   ],
+  "last_probe": {
+    "ran_at": "2026-09-04T14:16:00Z",
+    "command": "python3 scripts/probe_apodex_gap.py <ref>",
+    "main": {
+      "ref": "origin/main",
+      "sha": "ef03fa5a5f7020ff7601b4cc241e8f595a74eddb",
+      "hits": {
+        "gap_mining": ["task_error_field", "blocked_status"],
+        "task_pipeline": [],
+        "environment_scaling": ["labeled_mock_fallback"],
+        "coordination_scaling": ["disk_task_board"],
+        "asymmetric_verification": [],
+        "training_loop": [],
+        "eval_attribution": ["unit_tests"]
+      }
+    },
+    "inbound_pr_2": {
+      "ref": "origin/cursor/cloud-agent-1788530459636-8e4tt",
+      "sha": "5212820ccb54293d7c585ce13b3c4e2a49a1dce2",
+      "hits": {
+        "gap_mining": ["task_error_field", "blocked_status", "evidence_verdict"],
+        "task_pipeline": ["followup_specs", "task_kind_followup"],
+        "environment_scaling": ["engine_adapter", "labeled_mock_fallback"],
+        "coordination_scaling": ["disk_task_board", "coordinator_follow_up"],
+        "asymmetric_verification": ["verifier_class", "static_audit", "conservative_merge"],
+        "training_loop": [],
+        "eval_attribution": ["unit_tests", "verifier_tests"]
+      },
+      "still_missing": [
+        "capability_ledger",
+        "new_environment_factory",
+        "delivery_verifier",
+        "live_replan",
+        "trajectory_log",
+        "prompt_evolution",
+        "working_capability_bench"
+      ]
+    }
+  },
   "nearest_moves": [
     "Persist a failure taxonomy from task_board.json + sub-reports after each session.",
     "Make the task board live: staged sub-agent returns, coordinator mid-run add/stop/replan.",

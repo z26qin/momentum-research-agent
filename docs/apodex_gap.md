@@ -111,9 +111,26 @@ decompose → dispatch → independent Verifier（static audit + 有界 ReAct）
 ## 更新规则
 
 1. `git fetch origin main`，对 `last_reviewed_sha..origin/main` 做 diff。
-2. 只给**被 diff 实际推进的维度**改分；没有新提交则只更新本文件的「无新提交」记录，不改分。
-3. 同步改 `apodex_gap.json` 的 `last_reviewed_sha`、`last_reviewed_at` 和对应 `dimensions[].score_0_to_100`。
-4. 在下面追加一行历史，不要改写旧行。
+2. 跑 `python3 scripts/probe_apodex_gap.py origin/main`（脚本用 `git grep` 扫指定 ref，不必 checkout 到 main）。
+3. 只给**被 diff 实际推进的维度**改分；probe 命中只是证据，不是分数。没有新提交则不改正式分。
+4. 同步改 `apodex_gap.json` 的 `last_reviewed_sha`、`last_reviewed_at`、`last_probe` 和对应 `dimensions[].score_0_to_100`。
+5. 在下面追加一行历史，不要改写旧行。
+
+## Probe 快照（2026-09-04）
+
+可复跑：`python3 scripts/probe_apodex_gap.py origin/main`
+
+| 维度 | main 命中 | PR #2 命中 | 两边都缺 |
+| --- | --- | --- | --- |
+| 缺口挖掘 | Task + BLOCKED | + EvidenceVerdict | capability_ledger |
+| Task Pipeline | 无 | followup_specs, TaskKind.FOLLOWUP | 新环境工厂 |
+| 环境缩放 | mock 回退 | + engine_adapter | delivery_verifier / \(V_D\) |
+| 协调缩放 | TaskBoard | + `follow_up()` | live replan / AgentBus |
+| 非对称验证 | 无 | Verifier + static_audit + conservative merge | —（#2 信号齐，深度仍远小于 Apodex Statement Review） |
+| 轨迹学习 | 无 | 无 | trajectory_log, prompt 进化 |
+| 评测归因 | 单测 | + verifier tests | working-capability 基准 |
+
+`live_replan` 必须匹配 `class AgentBus` / `async def replan` / `def staged_return`。文档里写「AgentBus is out of scope」不算命中。
 
 ## 历史
 
@@ -121,3 +138,4 @@ decompose → dispatch → independent Verifier（static audit + 有界 ReAct）
 | --- | --- | ---: | --- |
 | 2026-09-04 | `ef03fa5` | 8 | `main` 唯一提交：Phase 1 骨架。闭环六段均未作为代码存在。 |
 | 2026-09-04 | `ef03fa5`（main 未变） | 8 | 预评草稿 PR #2：合入后综合分约 22。正式分不改，直到该 diff 进入 `main`。 |
+| 2026-09-04 | `ef03fa5`（main 未变） | 8 | 增加 `scripts/probe_apodex_gap.py`。main 命中 5/21 信号；PR #2 命中 14/21。轨迹学习两边都是 0。 |
