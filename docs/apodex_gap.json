@@ -125,9 +125,32 @@
     "Replace engine_query mock with the real momentum engine so a verifier can exist.",
     "Log tool traces in a replayable session record (the raw material for any later learning)."
   ],
+  "inbound_prs": [
+    {
+      "number": 2,
+      "url": "https://github.com/z26qin/momentum-research-agent/pull/2",
+      "title": "Tighten engine adapter and one-round follow-up",
+      "head_sha": "5212820ccb54293d7c585ce13b3c4e2a49a1dce2",
+      "state": "draft",
+      "scored_at": "2026-09-04T14:15:00Z",
+      "predicted_overall": 22,
+      "predicted_band": "verified_runtime",
+      "predicted_scores": {
+        "gap_mining": 15,
+        "task_pipeline": 8,
+        "environment_scaling": 22,
+        "coordination_scaling": 32,
+        "asymmetric_verification": 40,
+        "training_loop": 0,
+        "eval_attribution": 18
+      },
+      "note": "Independent Verifier + one-round follow-up + snapshot engine adapter. Largest move is asymmetric verification. Still not a self-improvement loop: no gap corpus, no Task Pipeline of new environments, no trajectory learning. Do not change official scores until this lands on main."
+    }
+  ],
   "explicitly_not_this_repo": [
     "SFT / RL on DeepSeek weights",
     "LangChain / LangGraph / CrewAI",
-    "Web UI, Docker, database, MCP server"
+    "Web UI, Docker, database, MCP server",
+    "AgentBus / unbounded follow-up loops (PR #2 AGENTS.md)"
   ]
 }
