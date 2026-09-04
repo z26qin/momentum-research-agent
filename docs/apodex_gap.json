@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "purpose": "Standing review of main vs Apodex 1.1 managed self-improvement loop (not unconstrained model self-modification).",
+  "baseline_commit": "ef03fa5a5f7020ff7601b4cc241e8f595a74eddb",
+  "last_reviewed_sha": "ef03fa5a5f7020ff7601b4cc241e8f595a74eddb",
+  "last_reviewed_at": "2026-09-04T14:12:00Z",
+  "reference": {
+    "paper": "Apodex 1.1: Scaling Agentic Intelligence for Complex Work",
+    "arxiv": "https://arxiv.org/html/2608.23283",
+    "definition": "Self-evolution is the managed loop: observed gaps → Task Pipeline → Environment Scaling + Agentic Coordination Scaling → SFT/agentic RL → evaluation/failure attribution. It is not the model rewriting its own weights."
+  },
+  "overall": {
+    "score_0_to_100": 8,
+    "band": "scaffold_only",
+    "summary": "Phase 1 orchestration harness (decompose/dispatch/synthesize + disk task board). None of the self-improvement loop stages exist as code."
+  },
+  "dimensions": [
+    {
+      "id": "gap_mining",
+      "name": "Capability-gap mining",
+      "score_0_to_100": 5,
+      "apodex": "Classify real-task failures, benchmark errors, and user/expert feedback into capability deficiencies.",
+      "present": [
+        "Coordinator marks failed sub-agents BLOCKED and mentions the gap in synthesis (coordinator.py dispatch_all/synthesize).",
+        "Task.error stores a free-text exception string (schemas.Task, task_board.fail)."
+      ],
+      "missing": [
+        "No taxonomy (tool misuse, evidence gap, coordination failure, verifier miss, etc.).",
+        "Session reports are not ingested as a gap corpus.",
+        "No user/expert feedback channel into the board."
+      ]
+    },
+    {
+      "id": "task_pipeline",
+      "name": "Task Pipeline",
+      "score_0_to_100": 0,
+      "apodex": "Convert classified gaps into the next task distribution with family-specific verification before training signal.",
+      "present": [
+        "One-shot decompose prompt produces 2–5 independent tasks from the user question (prompts/decompose.md)."
+      ],
+      "missing": [
+        "No gap → new-task generator.",
+        "No held-out task library, occupation/deliverable registry, or difficulty calibration."
+      ]
+    },
+    {
+      "id": "environment_scaling",
+      "name": "Environment Scaling",
+      "score_0_to_100": 10,
+      "apodex": "File / search / code worlds with state, tools, transitions, budgets, delivery contract D, and verifier V_D.",
+      "present": [
+        "Thin tools: web_search, file_reader (read-only), market_data, 30s shell, mock engine_query.",
+        "file_reader refuses paths outside the project."
+      ],
+      "missing": [
+        "engine_query is hash-seeded mock data (tools/engine_query.py TODO).",
+        "No workspace contract, provenance, replay manifest, or delivery verifier.",
+        "shell is unsandboxed; no file-write / artifact publisher."
+      ]
+    },
+    {
+      "id": "coordination_scaling",
+      "name": "Agentic Coordination Scaling",
+      "score_0_to_100": 20,
+      "apodex": "Trained policy for decompose, delegate, staged return, shared-state revision, replan, and stop obsolete branches. Runtime: live task board, async human intervention, asymmetric verification, adaptive team effort.",
+      "present": [
+        "Lead coordinator + parallel sub-agents (coordinator.run).",
+        "Disk-backed TaskBoard with status machine and save-on-mutation (task_board.py).",
+        "--resume requeues ACTIVE/BLOCKED (crash recovery, not intervention).",
+        "Sub-agent failure does not abort the coordinator (asyncio.gather return_exceptions=True)."
+      ],
+      "missing": [
+        "Decomposition is one-shot; no mid-run board edits, staged returns, or branch termination.",
+        "Sub-agents are independent by design (decompose.md: self-contained, no other-task results).",
+        "Roles are a fixed five-profile catalogue, not problem-induced.",
+        "No async human intervention, Statement Review, or adaptive Max Team Effort."
+      ]
+    },
+    {
+      "id": "asymmetric_verification",
+      "name": "Asymmetric / independent verification",
+      "score_0_to_100": 5,
+      "apodex": "Narrow verifier attacks a claim + evidence + delivery constraint; does not re-solve the whole problem.",
+      "present": [
+        "Synthesize prompt asks to flag dissenting views (prompts/synthesize.md).",
+        "JSON schema retry once on ValidationError (_complete_json)."
+      ],
+      "missing": [
+        "No independent reviewer agent, claim-level attack, or source triangulation.",
+        "Synthesizer sees generator outputs in the same context (anchoring)."
+      ]
+    },
+    {
+      "id": "training_loop",
+      "name": "Trajectory learning (SFT / agentic RL or system analogue)",
+      "score_0_to_100": 0,
+      "apodex": "Unified SFT then agentic RL (PIVOT-RL) over executable and coordination trajectories. Self-evolution reallocates training effort; it does not let the model edit itself.",
+      "present": [
+        "Frozen DeepSeek API client (config.make_client). Models are not trained here."
+      ],
+      "missing": [
+        "No trajectory logger (actions, observations, file deltas, termination reason).",
+        "No system-level analogue: prompt/profile/tool evolution from session traces.",
+        "AGENTS.md forbids extra agent frameworks; a file-based gap ledger + prompt patches would be the in-repo analogue."
+      ]
+    },
+    {
+      "id": "eval_attribution",
+      "name": "Evaluation and failure attribution",
+      "score_0_to_100": 8,
+      "apodex": "ReAct vs Agent Team eval; capability analysis feeds the next Task Pipeline.",
+      "present": [
+        "Unit tests for task board, ReAct loop, coordinator file-writing (no live API)."
+      ],
+      "missing": [
+        "No working-capability benchmark, delivery rubric, or replayable eval worlds.",
+        "Test failures do not become capability gaps."
+      ]
+    }
+  ],
+  "nearest_moves": [
+    "Persist a failure taxonomy from task_board.json + sub-reports after each session.",
+    "Make the task board live: staged sub-agent returns, coordinator mid-run add/stop/replan.",
+    "Independent statement review of synthesis claims against cited sources.",
+    "Replace engine_query mock with the real momentum engine so a verifier can exist.",
+    "Log tool traces in a replayable session record (the raw material for any later learning)."
+  ],
+  "explicitly_not_this_repo": [
+    "SFT / RL on DeepSeek weights",
+    "LangChain / LangGraph / CrewAI",
+    "Web UI, Docker, database, MCP server"
+  ]
+}
