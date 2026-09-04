@@ -38,7 +38,7 @@ Coordinator synthesis
 
 `verification.json` is the per-session momentum gap ledger: `gaps[]` (rejected/unchecked/missing/unanswered/engine_mock) plus `traces[]` of replayable `engine_query` / `web_search` calls. Live search is stored-observation replay; engine snapshots replay from `source_path` when present.
 
-After verify, those `gaps[]` are appended to the cross-session file `reports/gap_ledger.jsonl` (deduped by `evidence_id`, status `OPEN` / `CONSUMED`). The next session classifies each row as `crowding` / `unwind_crash` / `engine_freshness` / `source_quality`. After decompose and before dispatch, `seed_from_ledger()` plants at most 2 `kind=gap` tasks (`crowding` → `flow_analyst`, unwind/engine → `momentum_analyst`) and marks those rows `CONSUMED`. This is not a second follow-up and not AgentBus.
+After verify, those `gaps[]` are appended to the cross-session file `reports/gap_ledger.jsonl` (deduped by `evidence_id`, status `OPEN` / `CONSUMED` / `CLOSED`). The next session classifies each row as `crowding` / `unwind_crash` / `engine_freshness` / `source_quality`. After decompose and before dispatch, `seed_from_ledger()` plants at most 2 `kind=gap` tasks (`crowding` → `flow_analyst`, unwind/engine → `momentum_analyst`) and marks those rows `CONSUMED`. After this session verifies those planted tasks, the same rows become `CLOSED` (VERIFIED / no longer `ENGINE_MOCK`) or go back to `OPEN` (still rejected / unchecked / mock). This is not a second follow-up and not AgentBus.
 
 Follow-up is one bounded extra dispatch (default max 2 tasks) using the original analyst profiles. It does not reopen verified items, does not loop, and is skipped on a session that already has `kind=followup` tasks or a completed synthesis. AgentBus is still out of scope.
 
@@ -47,7 +47,7 @@ Follow-up is one bounded extra dispatch (default max 2 tasks) using the original
 ## Artifacts
 
 ```
-reports/gap_ledger.jsonl                  # cross-session OPEN/CONSUMED gaps
+reports/gap_ledger.jsonl                  # cross-session OPEN/CONSUMED/CLOSED gaps
 reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/
   task_board.json
   sub_reports/{task_id}_{profile}.json    # source of truth
@@ -122,4 +122,4 @@ Do not hit the live DeepSeek API in unit tests.
 
 ## What not to build here
 
-No AgentBus, SpawnGuard, verifier-of-the-verifier, web UI, Docker, database, MCP server, or extra agent frameworks. Follow-up research is the one bounded in-session round above — do not turn it into an unbounded loop. Cross-session gap seed plants at most 2 `kind=gap` tasks from `reports/gap_ledger.jsonl`; it is not a second follow-up.
+No AgentBus, SpawnGuard, verifier-of-the-verifier, web UI, Docker, database, MCP server, or extra agent frameworks. Follow-up research is the one bounded in-session round above — do not turn it into an unbounded loop. Cross-session gap seed plants at most 2 `kind=gap` tasks from `reports/gap_ledger.jsonl`; after verify those rows become `CLOSED` or `OPEN` again. It is not a second follow-up.
