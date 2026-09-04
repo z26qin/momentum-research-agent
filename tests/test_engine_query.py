@@ -11,6 +11,7 @@ from momentum_research_agent.tools.engine_adapter import (
     normalize_engine_payload,
     select_engine_artifact,
 )
+from momentum_research_agent.tools.engine_pipeline import PipelineRun
 from momentum_research_agent.tools.engine_query import engine_query
 
 
@@ -44,6 +45,55 @@ def _write_latest(root: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
+
+
+@pytest.mark.asyncio
+async def test_engine_query_without_end_resolves_as_of_and_runs_pipeline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine = tmp_path / "engine"
+    (engine / "scripts").mkdir(parents=True)
+    (engine / "scripts" / "run_monitor.py").write_text("# stub\n", encoding="utf-8")
+    cache = engine / "outputs" / "pipeline_runs"
+    cache.mkdir(parents=True)
+    (cache / "2026-06-30.json").write_text(
+        json.dumps({"as_of_date": "2026-06-30", "overall_risk_state": "normal"}),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("MOMENTUM_DISABLE_PIPELINE", raising=False)
+    monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(engine))
+    monkeypatch.delenv("MOMENTUM_ENGINE_SNAPSHOT", raising=False)
+
+    called: list[str] = []
+
+    def fake_run(as_of: str, **kwargs):  # noqa: ANN003
+        called.append(as_of)
+        return PipelineRun(
+            True,
+            {
+                "as_of_date": as_of,
+                "overall_risk_state": "normal",
+                "full_run_fingerprint": "abc",
+                "mechanical_unwind_state": "QUIET",
+            },
+            None,
+            True,
+            engine,
+            0.0,
+        )
+
+    monkeypatch.setattr(
+        "momentum_research_agent.tools.engine_query.run_pipeline",
+        fake_run,
+    )
+    raw = await engine_query("NVDA")
+    payload = json.loads(raw)
+    assert called == ["2026-06-30"]
+    assert payload["pipeline_run"] is True
+    assert payload["delivery_contract"]["verdict"] == "pass"
+    assert payload["delivery_contract"]["requested_as_of"] == "2026-06-30"
+    assert payload["end_resolved"] is True
+    assert "resolved latest as-of" in payload["note"]
 
 
 @pytest.mark.asyncio

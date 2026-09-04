@@ -142,7 +142,9 @@ class Verifier:
                 self.console.print(f"[dim]verifier · {name}({arguments}) → {preview}[/dim]")
 
         try:
-            system_prompt = load_profile(VERIFIER_PROFILE, self.project_root)
+            system_prompt = load_profile(
+                VERIFIER_PROFILE, self.project_root, apply_overlay=False
+            )
             text = await react_loop(
                 client=self.client,
                 model=self.model,
