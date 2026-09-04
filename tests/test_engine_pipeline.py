@@ -1,0 +1,107 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from momentum_research_agent.config import find_project_root
+from momentum_research_agent.tools.engine_adapter import resolve_engine_root as adapter_resolve
+from momentum_research_agent.tools.engine_pipeline import (
+    WARM_TIMEOUT_S,
+    resolve_engine_root,
+    resolve_pipeline_root,
+    run_pipeline,
+)
+from momentum_research_agent.tools.engine_query import engine_query
+from momentum_research_agent.tools.registry import ToolContext, set_tool_context
+
+ENGINE = find_project_root() / "fixtures" / "engine"
+
+
+@pytest.fixture
+def live_engine(monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.delenv("MOMENTUM_DISABLE_PIPELINE", raising=False)
+    monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(ENGINE))
+    monkeypatch.delenv("MOMENTUM_ENGINE_SNAPSHOT", raising=False)
+    set_tool_context(ToolContext(project_root=find_project_root(), session_dir=None))
+    return ENGINE
+
+
+def test_adapter_and_pipeline_share_resolve_engine_root() -> None:
+    assert adapter_resolve is resolve_engine_root
+
+
+def test_missing_engine_dir_does_not_fall_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(tmp_path / "missing-engine"))
+    monkeypatch.delenv("MOMENTUM_DISABLE_PIPELINE", raising=False)
+    assert resolve_engine_root(find_project_root()) is None
+    assert resolve_pipeline_root(find_project_root()) is None
+
+
+def test_json_only_dir_is_root_but_not_pipeline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(tmp_path))
+    monkeypatch.delenv("MOMENTUM_DISABLE_PIPELINE", raising=False)
+    assert resolve_engine_root(tmp_path) == tmp_path
+    assert resolve_pipeline_root(tmp_path) is None
+
+
+def test_repo_does_not_import_monitor_package() -> None:
+    root = find_project_root() / "src" / "momentum_research_agent"
+    import re
+
+    pattern = re.compile(
+        r"^\s*(from src\.mvp|import src\.mvp|import momentum_crash|from momentum_crash)\b",
+        re.M,
+    )
+    hits: list[str] = []
+    for path in root.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        if pattern.search(text):
+            hits.append(str(path))
+    assert hits == []
+
+
+def test_pipeline_run_mvp_for_frozen_date(live_engine: Path) -> None:
+    run = run_pipeline("2026-05-29", project_root=find_project_root(), timeout_s=WARM_TIMEOUT_S)
+    assert run.ok, run.error
+    assert run.assessment is not None
+    assert run.assessment["overall_risk_state"] == "normal"
+    assert run.assessment.get("full_run_fingerprint")
+    cache = live_engine / "outputs" / "pipeline_runs" / "2026-05-29.json"
+    assert cache.is_file()
+
+
+@pytest.mark.asyncio
+async def test_engine_query_pipeline_pass_and_ignores_poisoned_snapshot(
+    live_engine: Path,
+) -> None:
+    run_pipeline("2026-05-29", project_root=find_project_root(), timeout_s=WARM_TIMEOUT_S)
+    poison = live_engine / "outputs" / "snapshot_2026-05-29" / "structured_snapshot.json"
+    poison.parent.mkdir(parents=True, exist_ok=True)
+    poison.write_text(
+        json.dumps(
+            {
+                "as_of_date": "2026-05-29",
+                "overall_risk_state": "panic_elevated",
+                "mechanical_unwind_state": "UNWIND",
+            }
+        ),
+        encoding="utf-8",
+    )
+    try:
+        raw = await engine_query("NVDA", end="2026-05-29")
+        payload = json.loads(raw)
+        assert payload["pipeline_run"] is True
+        assert payload["delivery_contract"]["verdict"] == "pass"
+        assert payload["delivery_contract"]["source"] == "run_mvp"
+        assert payload["risk_state"] == "normal"
+        assert payload["source"] == "run_mvp"
+        assert "does not read structured_snapshot.json" in payload.get("note", "")
+        assert payload["risk_state"] != "panic_elevated"
+    finally:
+        poison.unlink(missing_ok=True)

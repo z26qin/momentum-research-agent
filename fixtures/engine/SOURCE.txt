@@ -1,0 +1,29 @@
+momentum-tail-risk-monitor PIT pack
+commit: 99b0688
+upstream: https://github.com/z26qin/momentum-tail-risk-monitor
+entry: python scripts/run_monitor.py --as-of-date YYYY-MM-DD --output-json …
+path: require_cached_inputs() → run_compact_assessment() → run_mvp()
+
+Vendored files:
+  data/processed/market_features.parquet  5.00 MB
+  data/processed/leg_risk_history.parquet  0.55 MB
+  data/processed/french_research_factors_daily.parquet  0.37 MB
+  data/processed/momentum_labels_h5.parquet  2.22 MB
+  data/processed/momentum_labels_h20.parquet  2.24 MB
+  data/processed/momentum_portfolio_holdings.parquet  0.07 MB
+  data/processed/sp500_benchmark.parquet  0.07 MB
+  data/processed/sp500_prices.parquet  38.47 MB
+  data/processed/sp500_universe.parquet  0.03 MB
+  src/  1.72 MB (1805861 bytes)
+  scripts/  9.1 KB
+
+processed parquet total: 49.02 MB
+
+Host-side deps for this pack (this repo's pyproject.toml, not vendored):
+  pandas, numpy, pyarrow, scipy (Spearman in src/risk/concentration.py)
+
+Still out of this repo:
+  full data/processed tree (~77MB), including universe_prices.parquet (~16MB)
+  data/raw live downloads
+  monitor .venv, tests, outputs JSON snapshots (not a V_D pass path)
+  universe_prices.parquet is still omitted; sp500_prices.parquet is included because run_mvp failed without it

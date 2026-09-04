@@ -1,4 +1,4 @@
-"""Coordinator: decompose → gap seed → dispatch → verify → follow-up → synthesize."""
+"""Coordinator: decompose → gap seed → warm engine → dispatch → replan → verify → follow-up → synthesize."""
 
 from __future__ import annotations
 
@@ -22,6 +22,12 @@ from momentum_research_agent.coordinator.followup import (
     followup_specs,
     is_followup_task,
 )
+from momentum_research_agent.coordinator.replan import (
+    DEFAULT_REPLAN_PROFILE,
+    already_replanned,
+    replan_assignment,
+    should_replan,
+)
 from momentum_research_agent.coordinator.gap_seed import (
     already_gap_seeded,
     record_session_gaps,
@@ -44,6 +50,8 @@ from momentum_research_agent.models.schemas import (
     utcnow,
 )
 from momentum_research_agent.state.persistence import save_text
+from momentum_research_agent.state.prompt_memory import failure_brief, overlay_text, refresh_profile_hints
+from momentum_research_agent.tools.engine_pipeline import warm_pipeline
 from momentum_research_agent.state.reports import (
     load_research_report,
     load_verification_report,
@@ -97,7 +105,7 @@ class Coordinator:
         self.board.save()
         await self.decompose(question)
         self.seed_from_ledger()
-        await self.dispatch_all()
+        await self._dispatch_wave()
         await self.verify()
         if await self.follow_up():
             await self.verify()
@@ -114,13 +122,12 @@ class Coordinator:
         if pending:
             if not already_gap_seeded(self.board.tasks):
                 self.seed_from_ledger()
-            self.board.requeue_unfinished()
-            await self.dispatch_all()
+            await self._dispatch_wave(requeue=True)
             ran_dispatch = True
         elif not self.board.tasks:
             await self.decompose(self.board.question)
             self.seed_from_ledger()
-            await self.dispatch_all()
+            await self._dispatch_wave()
             ran_dispatch = True
         self._load_existing_sub_reports()
         existing_verification = load_verification_report(self.session_dir)
@@ -144,7 +151,13 @@ class Coordinator:
 
     async def decompose(self, question: str) -> list[Task]:
         system_prompt = (PROMPTS_DIR / "decompose.md").read_text(encoding="utf-8")
+        overlay = overlay_text(self.project_root)
+        if overlay:
+            system_prompt = f"{system_prompt}\n\n{overlay}"
         user_message = f"Research question:\n\n{question}"
+        brief = failure_brief(self.project_root)
+        if brief:
+            user_message = f"{user_message}\n\n{brief}"
         result = await self._complete_json(
             system_prompt,
             user_message,
@@ -264,6 +277,7 @@ class Coordinator:
         )
         self.record_gaps()
         self.resolve_planted_gaps()
+        refresh_profile_hints(self.project_root)
         return self.verification
 
     def record_gaps(self) -> None:
@@ -299,6 +313,40 @@ class Coordinator:
             )
             self.console.print(self.render_board_table())
         return planted
+
+    async def _dispatch_wave(self, *, requeue: bool = False) -> None:
+        """Warm engine, dispatch pending tasks, then at most one kind=replan."""
+        self.warm_engine()
+        if requeue:
+            self.board.requeue_unfinished()
+        await self.dispatch_all()
+        if self.maybe_replan():
+            await self.dispatch_all()
+
+    def warm_engine(self) -> None:
+        """Prefetch run_mvp for frozen as-of dates so ReAct stays inside the tool budget."""
+        results = warm_pipeline(self.project_root)
+        ok = sum(1 for item in results if item.ok)
+        if results:
+            self.console.print(
+                f"[bold]Engine warm[/bold] — {ok}/{len(results)} run_mvp cache(s) ready"
+            )
+
+    def maybe_replan(self) -> bool:
+        """At most one kind=replan after the first dispatch wave."""
+        if already_replanned(self.board.tasks):
+            return False
+        if not should_replan(self.board.tasks, self.session_dir):
+            return False
+        self.board.add_task(
+            "Replan: live engine_query",
+            replan_assignment(self.board.question),
+            DEFAULT_REPLAN_PROFILE,
+            kind=TaskKind.REPLAN,
+        )
+        self.console.print("[bold]Replan[/bold] — one kind=replan task (not follow-up)")
+        self.console.print(self.render_board_table())
+        return True
 
     async def follow_up(self) -> bool:
         """One bounded round of research on rejected/unchecked evidence."""
