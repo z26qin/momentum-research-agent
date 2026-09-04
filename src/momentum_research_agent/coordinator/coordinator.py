@@ -1,4 +1,4 @@
-"""Coordinator: decompose → dispatch in parallel → synthesize a PM brief."""
+"""Coordinator: decompose → dispatch → verify → follow-up → synthesize."""
 
 from __future__ import annotations
 
@@ -12,21 +12,38 @@ from rich.console import Console
 from rich.live import Live
 from rich.table import Table
 
-from momentum_research_agent.agents.sub_agent import SubAgent, render_sub_report_markdown
+from momentum_research_agent.agents.budget import LoopBudget
+from momentum_research_agent.agents.sub_agent import SubAgent
+from momentum_research_agent.agents.verifier import Verifier
 from momentum_research_agent.config import coordinator_model, sub_agent_model, usage_cost_usd
+from momentum_research_agent.coordinator.followup import (
+    FOLLOWUP_TITLE_PREFIX,
+    MAX_FOLLOWUP_TASKS,
+    already_followed_up,
+    followup_specs,
+)
 from momentum_research_agent.coordinator.task_board import TaskBoard
 from momentum_research_agent.models.schemas import (
+    AgentRunResult,
     DecompositionResult,
-    SubReport,
+    ResearchReport,
     SynthesisReport,
     Task,
     TaskStatus,
     UsageSummary,
+    VerificationReport,
     parse_model_json,
     utcnow,
 )
 from momentum_research_agent.state.persistence import save_text
-from momentum_research_agent.tools import DEFAULT_TOOLS, PROFILE_TOOLS
+from momentum_research_agent.state.reports import (
+    load_research_report,
+    load_verification_report,
+    persist_verification_report,
+    render_research_report_markdown,
+    render_verification_markdown,
+)
+from momentum_research_agent.tools import RESEARCH_PROFILES
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 
@@ -42,10 +59,11 @@ class Coordinator:
         sub_model: str | None = None,
         coordinator_model_name: str | None = None,
         max_sub_agents: int = 4,
+        max_follow_ups: int = MAX_FOLLOWUP_TASKS,
         verbose: bool = False,
         console: Console | None = None,
         usage_tracker: UsageSummary | None = None,
-        max_turns: int = 15,
+        budget: LoopBudget | None = None,
     ) -> None:
         self.session_dir = Path(session_dir)
         self.session_dir.mkdir(parents=True, exist_ok=True)
@@ -58,17 +76,22 @@ class Coordinator:
         self.sub_model = sub_model or sub_agent_model()
         self.coordinator_model_name = coordinator_model_name or coordinator_model()
         self.max_sub_agents = max_sub_agents
+        self.max_follow_ups = max_follow_ups
         self.verbose = verbose
         self.console = console or Console()
         self.usage_tracker = usage_tracker or UsageSummary()
-        self.max_turns = max_turns
-        self.sub_reports: dict[str, SubReport] = {}
+        self.budget = budget or LoopBudget()
+        self.sub_reports: dict[str, ResearchReport] = {}
+        self.verification: VerificationReport | None = None
 
     async def run(self, question: str) -> SynthesisReport:
         self.board.question = question
         self.board.save()
         await self.decompose(question)
         await self.dispatch_all()
+        await self.verify()
+        if await self.follow_up():
+            await self.verify()
         return await self.synthesize()
 
     async def resume(self) -> SynthesisReport:
@@ -78,18 +101,33 @@ class Coordinator:
             for task in self.board.tasks
             if task.status in {TaskStatus.PENDING, TaskStatus.BLOCKED, TaskStatus.ACTIVE}
         ]
+        ran_dispatch = False
         if pending:
             self.board.requeue_unfinished()
             await self.dispatch_all()
+            ran_dispatch = True
         elif not self.board.tasks:
             await self.decompose(self.board.question)
             await self.dispatch_all()
+            ran_dispatch = True
         self._load_existing_sub_reports()
+        existing_verification = load_verification_report(self.session_dir)
+        if ran_dispatch or existing_verification is None:
+            await self.verify()
+        else:
+            self.verification = existing_verification
+            if self._followup_needs_reverify():
+                await self.verify()
         json_path = self.session_dir / "synthesis.json"
-        if json_path.exists() and not pending:
-            return SynthesisReport.model_validate_json(json_path.read_text(encoding="utf-8"))
-        if synthesis_path.exists() and not pending:
+        session_complete = (json_path.exists() or synthesis_path.exists()) and not ran_dispatch
+        if session_complete:
+            if json_path.exists():
+                return SynthesisReport.model_validate_json(
+                    json_path.read_text(encoding="utf-8")
+                )
             return parse_model_json(SynthesisReport, synthesis_path.read_text(encoding="utf-8"))
+        if await self.follow_up():
+            await self.verify()
         return await self.synthesize()
 
     async def decompose(self, question: str) -> list[Task]:
@@ -115,27 +153,34 @@ class Coordinator:
         return created
 
     async def dispatch_all(self) -> None:
+        for task in list(self.board.pending):
+            if task.profile.removesuffix(".md") not in RESEARCH_PROFILES:
+                self.console.print(
+                    f"[red]Rejecting non-research profile '{task.profile}' on task {task.id}[/red]"
+                )
+                self.board.cancel(
+                    task.id,
+                    f"Profile '{task.profile}' is not a research profile.",
+                )
         pending = self.board.pending
         if not pending:
             return
 
         semaphore = asyncio.Semaphore(self.max_sub_agents)
 
-        async def run_one(task: Task) -> SubReport | Exception:
+        async def run_one(task: Task) -> AgentRunResult:
             async with semaphore:
                 self.board.activate(task.id)
                 agent = SubAgent(
                     client=self.client,
                     model=self.sub_model,
                     project_root=self.project_root,
-                    usage_tracker=self.usage_tracker,
-                    max_turns=self.max_turns,
+                    budget=self.budget,
                     verbose=self.verbose,
                     on_progress=self._on_progress,
                     console=self.console,
                 )
-                tools = PROFILE_TOOLS.get(task.profile, DEFAULT_TOOLS)
-                return await agent.run(task, tools, self.session_dir)
+                return await agent.run(task, None, self.session_dir)
 
         with Live(self.render_board_table(), console=self.console, refresh_per_second=4) as live:
             gathered = await asyncio.gather(
@@ -144,15 +189,90 @@ class Coordinator:
             )
 
         for task, result in zip(pending, gathered, strict=False):
+            if isinstance(result, asyncio.CancelledError):
+                raise result
             if isinstance(result, Exception):
-                self.console.print(f"[red]Task {task.id} failed:[/red] {result}")
-                self.board.fail(task.id, str(result))
+                error_type = type(result).__name__
+                self.console.print(f"[red]Task {task.id} failed ({error_type}):[/red] {result}")
+                self.board.fail(task.id, str(result), error_type=error_type)
                 continue
-            assert isinstance(result, SubReport)
-            self.sub_reports[task.id] = result
-            self.board.complete(task.id, result.findings)
+            assert isinstance(result, AgentRunResult)
+            self.usage_tracker.extend(result.usage)
+            self.sub_reports[task.id] = result.report
+            self.board.record_usage(
+                task.id,
+                tool_calls=result.tool_calls,
+                tokens_used=result.usage.total_tokens,
+            )
+            self.board.complete(task.id, result.report.summary)
 
         self.console.print(self.render_board_table())
+
+    async def verify(self) -> VerificationReport:
+        self._load_existing_sub_reports()
+        reports = [
+            self.sub_reports[task.id]
+            for task in self.board.completed
+            if task.id in self.sub_reports
+        ]
+        try:
+            result = await Verifier(
+                client=self.client,
+                model=self.sub_model,
+                project_root=self.project_root,
+                budget=self.budget,
+                verbose=self.verbose,
+                console=self.console,
+            ).run(self.board.question, reports, self.session_dir)
+            self.usage_tracker.extend(result.usage)
+            self.verification = result.report
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            from momentum_research_agent.agents.audit import static_audit
+
+            report = static_audit(self.board.question, reports)
+            report = report.model_copy(
+                update={
+                    "summary": f"{report.summary} Verifier crashed ({type(exc).__name__}: {exc}).",
+                    "overall_status": (
+                        "fail" if report.overall_status == "fail" else "pass_with_caveats"
+                    ),
+                }
+            )
+            persist_verification_report(self.session_dir, report)
+            self.verification = report
+            self.console.print(f"[red]Verifier failed:[/red] {exc}")
+        self.console.print(
+            f"[bold]Verification[/bold] — {self.verification.overall_status}: "
+            f"{self.verification.summary}"
+        )
+        return self.verification
+
+    async def follow_up(self) -> bool:
+        """One bounded round of research on rejected/unchecked evidence."""
+        if self.verification is None:
+            self.verification = load_verification_report(self.session_dir)
+        if self.verification is None:
+            return False
+        if already_followed_up(self.board.tasks):
+            return False
+        self._load_existing_sub_reports()
+        specs = followup_specs(
+            self.board.question,
+            self.verification,
+            self.sub_reports,
+            max_tasks=min(self.max_follow_ups, self.max_sub_agents),
+        )
+        if not specs:
+            return False
+        self.console.print(
+            f"[bold]Follow-up[/bold] — {len(specs)} task(s) on rejected/unchecked evidence"
+        )
+        for spec in specs:
+            self.board.add_task(spec.title, spec.assignment, spec.profile)
+        await self.dispatch_all()
+        return True
 
     async def synthesize(self) -> SynthesisReport:
         self._load_existing_sub_reports()
@@ -165,13 +285,44 @@ class Coordinator:
         completed = [
             task for task in self.board.tasks if task.status == TaskStatus.COMPLETED
         ]
-        chunks: list[str] = [f"Original research question:\n{self.board.question}\n"]
+        chunks: list[str] = [
+            f"Original research question:\n{self.board.question}\n",
+            "Treat findings: Evidence[] as the machine-readable source of truth. "
+            "summary is only a human view.",
+        ]
+        if self.verification is None:
+            self.verification = load_verification_report(self.session_dir)
+        if self.verification is not None:
+            chunks.append(
+                "## Independent verification\n\n"
+                f"{render_verification_markdown(self.verification)}\n\n"
+                f"Verification JSON:\n{self.verification.model_dump_json(indent=2)}\n\n"
+                "Weight rejected/unchecked evidence down. Do not treat unverified claims as facts."
+            )
+        followups = [
+            task for task in completed if task.title.startswith(FOLLOWUP_TITLE_PREFIX)
+        ]
+        if followups:
+            chunks.append(
+                "Follow-up reports below were spawned only for rejected/unchecked "
+                "evidence (one round). Prefer their sourced findings over the original "
+                "rejected/unchecked claims they were asked to repair."
+            )
         for task in completed:
             report = self.sub_reports.get(task.id)
-            body = render_sub_report_markdown(report) if report else (task.report or "")
-            chunks.append(f"## Sub-report: {task.title} [{task.profile}]\n\n{body}")
+            if report is None:
+                chunks.append(f"## Sub-report: {task.title} [{task.profile}]\n\n{task.report or ''}")
+                continue
+            chunks.append(
+                f"## Sub-report: {task.title} [{task.profile}]\n\n"
+                f"{render_research_report_markdown(report)}\n\n"
+                f"Evidence JSON:\n{report.model_dump_json(indent=2)}"
+            )
         if missing:
-            names = ", ".join(f"{task.title} ({task.status.value}: {task.error})" for task in missing)
+            names = ", ".join(
+                f"{task.title} ({task.status.value}: {task.error_type or task.error})"
+                for task in missing
+            )
             chunks.append(
                 "The following dimensions are missing because the sub-agent failed "
                 f"or was cancelled: {names}. Note the gap in the synthesis."
@@ -300,22 +451,26 @@ class Coordinator:
             live.update(self.render_board_table())
 
     def _load_existing_sub_reports(self) -> None:
-        folder = self.session_dir / "sub_reports"
-        if not folder.exists():
-            return
         for task in self.board.completed:
             if task.id in self.sub_reports:
                 continue
-            matches = list(folder.glob(f"{task.id}_*.md"))
-            if not matches:
-                continue
-            text = matches[0].read_text(encoding="utf-8")
-            self.sub_reports[task.id] = SubReport(
-                task_id=task.id,
-                title=task.title,
-                findings=text,
-                confidence="medium",
-            )
+            loaded = load_research_report(self.session_dir, task)
+            if loaded is not None:
+                self.sub_reports[task.id] = loaded
+
+    def _followup_needs_reverify(self) -> bool:
+        if self.verification is None:
+            return True
+        followup_ids = {
+            task.id
+            for task in self.board.tasks
+            if task.title.startswith(FOLLOWUP_TITLE_PREFIX)
+            and task.status == TaskStatus.COMPLETED
+        }
+        if not followup_ids:
+            return False
+        covered = {verdict.task_id for verdict in self.verification.verdicts if verdict.task_id}
+        return bool(followup_ids - covered)
 
 
 def _render_synthesis_markdown(report: SynthesisReport) -> str:

@@ -1,0 +1,120 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from momentum_research_agent.tools.engine_adapter import (
+    load_engine_state,
+    normalize_engine_payload,
+    select_engine_artifact,
+)
+from momentum_research_agent.tools.engine_query import engine_query
+
+
+def _isolate_engine_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(tmp_path / "missing-engine"))
+    monkeypatch.delenv("MOMENTUM_ENGINE_SNAPSHOT", raising=False)
+
+
+def _write_latest(root: Path) -> Path:
+    payload = {
+        "as_of_date": "2026-05-29",
+        "overall_risk_state": "normal",
+        "pm_posture": "escalate_for_pm_review",
+        "mechanical_unwind_state": "FRAGILITY_BUILDING",
+        "mechanism_scores": {"crowded_unwind": 96, "dm_recovery": 45},
+        "mechanism_statuses": {
+            "bear_market_recovery_crash": "watch",
+            "crowded_theme_unwind": "triggered",
+        },
+        "score_is_probability": False,
+        "theme_cluster": ["CIEN", "NVDA"],
+        "retrieved_evidence": [
+            {
+                "evidence_id": "csu-nvda-1",
+                "headline_or_summary": "NVIDIA reports quarter",
+                "source": "NVIDIA IR",
+            }
+        ],
+    }
+    path = root / "outputs" / "latest_assessment.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+@pytest.mark.asyncio
+async def test_engine_query_falls_back_to_labeled_mock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _isolate_engine_env(monkeypatch, tmp_path)
+    raw = await engine_query("NVDA", start="2026-01-01", end="2026-05-29")
+    payload = json.loads(raw)
+    assert payload["source"] == "mock"
+    assert payload["ticker"] == "NVDA"
+    assert "MOCK DATA" in payload["note"]
+    assert payload["risk_state"] in {"QUIET", "WATCH", "ELEVATED", "CRITICAL"}
+
+
+@pytest.mark.asyncio
+async def test_engine_query_reads_latest_assessment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_latest(tmp_path)
+    monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(tmp_path))
+    monkeypatch.delenv("MOMENTUM_ENGINE_SNAPSHOT", raising=False)
+    raw = await engine_query("NVDA", end="2026-05-29")
+    payload = json.loads(raw)
+    assert payload["source"] == "momentum-tail-risk-monitor"
+    assert payload["risk_state"] == "normal"
+    assert payload["regime"] == "FRAGILITY_BUILDING"
+    assert payload["pm_posture"] == "escalate_for_pm_review"
+    assert payload["crowding_score"] == 0.96
+    assert payload["conditional_crash_frequency"] is None
+    assert payload["scope"] == "market_or_book"
+    assert "theme_cluster" in payload["ticker_mentions"]
+    assert payload["as_of"] == "2026-05-29"
+    assert payload["as_of_match"] is True
+
+
+def test_select_prefers_matching_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_latest(tmp_path)
+    snap = tmp_path / "outputs" / "snapshot_2026-06-30" / "structured_snapshot.json"
+    snap.parent.mkdir(parents=True)
+    snap.write_text(
+        json.dumps(
+            {
+                "temporal_scope": {"analysis_as_of_date": "2026-06-30"},
+                "market_backdrop": {"dm_inspired_market_state": "bear_low_volatility"},
+                "mechanical_unwind": {"unwind_state": "QUIET"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(tmp_path))
+    monkeypatch.delenv("MOMENTUM_ENGINE_SNAPSHOT", raising=False)
+    chosen = select_engine_artifact(tmp_path, as_of="2026-06-30")
+    assert chosen == snap
+    loaded = load_engine_state("SMH", end="2026-06-30", project_root=tmp_path)
+    assert loaded is not None
+    assert loaded["risk_state"] == "bear_low_volatility"
+    assert loaded["dm_bear_market_indicator"] is True
+    assert loaded["regime"] == "QUIET"
+    assert loaded["as_of"] == "2026-06-30"
+
+
+def test_stale_as_of_is_flagged(tmp_path: Path) -> None:
+    path = _write_latest(tmp_path)
+    payload = normalize_engine_payload(
+        json.loads(path.read_text(encoding="utf-8")),
+        "AAPL",
+        path,
+        end="2026-08-01",
+    )
+    assert payload["as_of_match"] is False
+    assert "AAPL" in payload["note"]
+    assert payload["ticker_mentions"] == []

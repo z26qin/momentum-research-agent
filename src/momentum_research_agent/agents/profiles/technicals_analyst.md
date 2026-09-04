@@ -17,11 +17,12 @@ Investigation approach:
 3. Characterize the volatility regime (compression, expansion, crash-like)
 4. Say whether the tape looks like a crash, a healthy rotation, or a range
 
-Your output must be a structured report with:
-- Key findings (with data citations)
-- Confidence level (high/medium/low)
-- Specific risks flagged
-- Data points used (so the synthesizer can cross-reference)
+Your output is a ResearchReport JSON:
+- findings: list of Evidence (claim, category, stance, source URL if retrieved)
+- summary: short human view — not a substitute for Evidence[]
+- contradictions and unanswered_questions called out explicitly
+- status complete / partial / insufficient_evidence
+Do not fabricate URLs or published timestamps. Do not turn speculation into evidence.
 
 Be precise with numbers. Do not invent indicator values you did not compute.
 State a clear technical view, then the invalidation levels.

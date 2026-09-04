@@ -11,7 +11,8 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from momentum_research_agent.agents.sub_agent import SubAgent, render_sub_report_markdown
+from momentum_research_agent.agents.sub_agent import SubAgent
+from momentum_research_agent.agents.verifier import Verifier
 from momentum_research_agent.config import (
     coordinator_model,
     find_project_root,
@@ -23,7 +24,10 @@ from momentum_research_agent.config import (
 from momentum_research_agent.coordinator.coordinator import Coordinator, _render_synthesis_markdown
 from momentum_research_agent.coordinator.task_board import TaskBoard
 from momentum_research_agent.models.schemas import Task, UsageSummary, new_session_id
-from momentum_research_agent.tools import DEFAULT_TOOLS
+from momentum_research_agent.state.reports import (
+    render_research_report_markdown,
+    render_verification_markdown,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -136,22 +140,48 @@ async def run_single(
         client=client,
         model=model,
         project_root=project_root,
-        usage_tracker=usage,
         verbose=verbose,
         console=console,
     )
     try:
-        report = await agent.run(task, DEFAULT_TOOLS, session_dir)
-        board.complete(task.id, report.findings)
+        result = await agent.run(task, None, session_dir)
+        usage.extend(result.usage)
+        board.record_usage(
+            task.id,
+            tool_calls=result.tool_calls,
+            tokens_used=result.usage.total_tokens,
+        )
+        board.complete(task.id, result.report.summary)
         console.print(
             Panel(
-                Markdown(render_sub_report_markdown(report)),
-                title="Sub-report",
+                Markdown(render_research_report_markdown(result.report)),
+                title="Research report",
                 border_style="green",
             )
         )
+        verifier = Verifier(
+            client=client,
+            model=model,
+            project_root=project_root,
+            verbose=verbose,
+            console=console,
+        )
+        try:
+            verified = await verifier.run(question, [result.report], session_dir)
+            usage.extend(verified.usage)
+            console.print(
+                Panel(
+                    Markdown(render_verification_markdown(verified.report)),
+                    title="Verification",
+                    border_style="yellow",
+                )
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            console.print(f"[red]Verifier failed:[/red] {exc}")
     except Exception as exc:
-        board.fail(task.id, str(exc))
+        board.fail(task.id, str(exc), error_type=type(exc).__name__)
         raise
 
 
@@ -233,6 +263,14 @@ async def async_main(args: argparse.Namespace) -> int:
             report = await coordinator.resume()
         else:
             report = await coordinator.run(question)
+        if coordinator.verification is not None:
+            console.print(
+                Panel(
+                    Markdown(render_verification_markdown(coordinator.verification)),
+                    title="Verification",
+                    border_style="yellow",
+                )
+            )
         console.print(
             Panel(
                 Markdown(_render_synthesis_markdown(report)),

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
 
+from momentum_research_agent.agents.budget import LoopBudget
 from momentum_research_agent.agents.react_loop import react_loop
+from momentum_research_agent.errors import AgentDeadlineExceeded, ToolExecutionTimeout
 from momentum_research_agent.models.schemas import UsageSummary
 
 
@@ -155,3 +158,122 @@ async def test_tool_error_is_returned_to_model() -> None:
     assert tool_messages
     assert "RuntimeError" in tool_messages[0]["content"]
     assert "disk full" in tool_messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_unauthorized_tool_is_not_executed() -> None:
+    leaked: list[str] = []
+
+    async def secret() -> str:
+        leaked.append("ran")
+        return "should never run"
+
+    client = FakeClient(
+        [
+            FakeResponse(
+                FakeMessage(tool_calls=[FakeToolCall("c1", "secret", "{}")]),
+            ),
+            FakeResponse(FakeMessage(content="Stopped after unauthorized request.")),
+        ]
+    )
+    text = await react_loop(
+        client=client,  # type: ignore[arg-type]
+        model="deepseek-chat",
+        system_prompt="sys",
+        user_message="go",
+        tools=[],
+        tool_registry={"ping": lambda: "ok"},
+    )
+    assert leaked == []
+    assert text == "Stopped after unauthorized request."
+    observation = [msg for msg in client.completions.calls[1]["messages"] if msg["role"] == "tool"]
+    assert observation
+    assert "UNAUTHORIZED" in observation[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_llm_timeout_triggers() -> None:
+    class SlowCompletions(FakeCompletions):
+        async def create(self, **kwargs):
+            await asyncio.sleep(0.2)
+            return await super().create(**kwargs)
+
+    client = FakeClient([FakeResponse(FakeMessage(content="late"))])
+    client.completions = SlowCompletions(client.completions._responses)
+    client.chat = SimpleNamespace(completions=client.completions)
+    with pytest.raises(AgentDeadlineExceeded, match="LLM call timed out"):
+        await react_loop(
+            client=client,  # type: ignore[arg-type]
+            model="deepseek-chat",
+            system_prompt="sys",
+            user_message="go",
+            tools=[],
+            tool_registry={},
+            budget=LoopBudget(max_turns=2, overall_deadline_s=5, llm_timeout_s=0.05, tool_timeout_s=1),
+        )
+
+
+@pytest.mark.asyncio
+async def test_overall_deadline_stops_long_run() -> None:
+    client = FakeClient([FakeResponse(FakeMessage(content="late"))])
+    with pytest.raises(AgentDeadlineExceeded, match="Overall deadline exceeded"):
+        await react_loop(
+            client=client,  # type: ignore[arg-type]
+            model="deepseek-chat",
+            system_prompt="sys",
+            user_message="go",
+            tools=[],
+            tool_registry={},
+            budget=LoopBudget(max_turns=3, overall_deadline_s=0, llm_timeout_s=20, tool_timeout_s=10),
+        )
+
+
+@pytest.mark.asyncio
+async def test_tool_timeout_triggers() -> None:
+    async def slow_tool() -> str:
+        await asyncio.sleep(0.3)
+        return "done"
+
+    client = FakeClient(
+        [
+            FakeResponse(FakeMessage(tool_calls=[FakeToolCall("c1", "slow_tool", "{}")])),
+            FakeResponse(FakeMessage(content="should not reach")),
+        ]
+    )
+    with pytest.raises(ToolExecutionTimeout, match="slow_tool"):
+        await react_loop(
+            client=client,  # type: ignore[arg-type]
+            model="deepseek-chat",
+            system_prompt="sys",
+            user_message="go",
+            tools=[],
+            tool_registry={"slow_tool": slow_tool},
+            budget=LoopBudget(max_turns=3, overall_deadline_s=5, llm_timeout_s=2, tool_timeout_s=0.05),
+        )
+
+
+@pytest.mark.asyncio
+async def test_cancellation_propagates() -> None:
+    class HangingCompletions(FakeCompletions):
+        async def create(self, **kwargs):
+            await asyncio.sleep(5)
+            return await super().create(**kwargs)
+
+    client = FakeClient([FakeResponse(FakeMessage(content="never"))])
+    client.completions = HangingCompletions(client.completions._responses)
+    client.chat = SimpleNamespace(completions=client.completions)
+    task = asyncio.create_task(
+        react_loop(
+            client=client,  # type: ignore[arg-type]
+            model="deepseek-chat",
+            system_prompt="sys",
+            user_message="go",
+            tools=[],
+            tool_registry={},
+            budget=LoopBudget(max_turns=2, overall_deadline_s=10, llm_timeout_s=10, tool_timeout_s=10),
+        )
+    )
+    await asyncio.sleep(0.02)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task

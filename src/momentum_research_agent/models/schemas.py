@@ -24,6 +24,10 @@ def new_session_id() -> str:
     return f"{stamp}_{secrets.token_hex(4)}"
 
 
+def new_evidence_id() -> str:
+    return secrets.token_hex(4)
+
+
 class TaskStatus(str, Enum):
     PENDING = "PENDING"
     ACTIVE = "ACTIVE"
@@ -58,6 +62,7 @@ class Task(BaseModel):
     completed_at: Optional[datetime] = None
     tool_calls: int = 0
     tokens_used: int = 0
+    error_type: Optional[str] = None
 
 
 class TaskSpec(BaseModel):
@@ -76,14 +81,43 @@ class DecompositionResult(BaseModel):
     reasoning: str
 
 
-class SubReport(BaseModel):
+class EvidenceCategory(str, Enum):
+    MARKET_REGIME = "market_regime"
+    CROWDED_POSITIONING = "crowded_positioning"
+    FUNDAMENTAL_REPRICING = "fundamental_repricing"
+    CONTRADICTING_EVIDENCE = "contradicting_evidence"
+    OTHER = "other"
+
+
+class EvidenceStance(str, Enum):
+    SUPPORTING = "supporting"
+    CONTRADICTING = "contradicting"
+    NEUTRAL = "neutral"
+
+
+class Evidence(BaseModel):
+    id: str = Field(default_factory=new_evidence_id)
+    claim: str
+    category: EvidenceCategory
+    stance: EvidenceStance
+    source_url: str | None = None
+    source_name: str | None = None
+    published_at: datetime | None = None
+    retrieved_at: datetime = Field(default_factory=utcnow)
+    excerpt: str | None = None
+    confidence: Literal["high", "medium", "low"] = "medium"
+    agent_id: str | None = None
+
+
+class ResearchReport(BaseModel):
     task_id: str
     title: str
-    findings: str
-    confidence: Literal["high", "medium", "low"] = "medium"
-    key_data_points: list[str] = Field(default_factory=list)
-    risks_flagged: list[str] = Field(default_factory=list)
-    sources: list[str] = Field(default_factory=list)
+    agent_role: str
+    findings: list[Evidence] = Field(default_factory=list)
+    summary: str
+    unanswered_questions: list[str] = Field(default_factory=list)
+    contradictions: list[str] = Field(default_factory=list)
+    status: Literal["complete", "partial", "insufficient_evidence"] = "complete"
 
 
 class SynthesisReport(BaseModel):
@@ -137,6 +171,48 @@ class UsageSummary(BaseModel):
     @property
     def total_tokens(self) -> int:
         return self.prompt_tokens + self.completion_tokens
+
+    def extend(self, other: UsageSummary) -> None:
+        self.events.extend(event.model_copy() for event in other.events)
+
+
+class AgentRunResult(BaseModel):
+    report: ResearchReport
+    usage: UsageSummary = Field(default_factory=UsageSummary)
+    tool_calls: int = 0
+
+
+class VerificationStatus(str, Enum):
+    VERIFIED = "verified"
+    WEAK = "weak"
+    REJECTED = "rejected"
+    UNCHECKED = "unchecked"
+
+
+class EvidenceVerdict(BaseModel):
+    evidence_id: str
+    task_id: str | None = None
+    claim: str
+    status: VerificationStatus
+    notes: str = ""
+    issues: list[str] = Field(default_factory=list)
+    rechecked_source: str | None = None
+
+
+class VerificationReport(BaseModel):
+    question: str
+    overall_status: Literal["pass", "pass_with_caveats", "fail"]
+    summary: str
+    verdicts: list[EvidenceVerdict] = Field(default_factory=list)
+    unsupported_claims: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
+    timestamp: datetime = Field(default_factory=utcnow)
+
+
+class VerificationRunResult(BaseModel):
+    report: VerificationReport
+    usage: UsageSummary = Field(default_factory=UsageSummary)
+    tool_calls: int = 0
 
 
 def extract_json_text(text: str) -> str:

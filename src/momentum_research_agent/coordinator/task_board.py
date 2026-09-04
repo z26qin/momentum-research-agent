@@ -69,6 +69,7 @@ class TaskBoard:
             TaskStatus.ACTIVE,
             started_at=utcnow(),
             error=None,
+            error_type=None,
         )
 
     def complete(self, task_id: str, report: str | None = None) -> Task:
@@ -80,11 +81,12 @@ class TaskBoard:
             error=None,
         )
 
-    def fail(self, task_id: str, error: str) -> Task:
+    def fail(self, task_id: str, error: str, error_type: str | None = None) -> Task:
         return self._transition(
             task_id,
             TaskStatus.BLOCKED,
             error=error,
+            error_type=error_type,
             completed_at=utcnow(),
         )
 
@@ -237,7 +239,7 @@ class TaskBoard:
                 )
             task.status = new_status
             for key, value in updates.items():
-                if value is not None or key in {"error", "report"}:
+                if value is not None or key in {"error", "report", "error_type"}:
                     setattr(task, key, value)
             self._save_unlocked()
             return task.model_copy(deep=True)

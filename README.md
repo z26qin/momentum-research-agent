@@ -2,7 +2,7 @@
 
 Multi-agent investigation system for US equity momentum tail-risk. A coordinator decomposes a research question, runs independent analyst sub-agents in parallel, and synthesizes a structured PM brief.
 
-This is an original, purpose-built orchestration layer. It sits on top of a deterministic momentum tail-risk engine (Daniel–Moskowitz risk state, FINRA/GDELT overlays, triggered evidence). `engine_query` is a mock until that engine is wired in.
+This is an original, purpose-built orchestration layer. It sits on top of a deterministic momentum tail-risk engine (Daniel–Moskowitz risk state, FINRA/GDELT overlays, triggered evidence). `engine_query` reads JSON snapshots from `momentum-tail-risk-monitor` when that repo (or `MOMENTUM_ENGINE_DIR`) is available, and falls back to labeled mock data otherwise.
 
 ## Architecture
 
@@ -12,11 +12,14 @@ question
    ▼
 Coordinator (deepseek-reasoner)
    ├─ decompose → TaskBoard (disk)
-   ├─ dispatch  → SubAgents in parallel (deepseek-chat, ReAct + tools)
+   ├─ dispatch  → bounded SubAgents in parallel (deepseek-chat, ReAct + allowlisted tools)
+   │                └─ ResearchReport { findings: Evidence[], summary, status }
+   ├─ verify    → independent Verifier (static audit + ReAct re-check of Evidence[])
+   ├─ follow-up → at most one extra dispatch on rejected/unchecked evidence
    └─ synthesize → reports/{session}/synthesis.md
 ```
 
-No LangChain, LangGraph, or CrewAI. Raw OpenAI SDK calls against DeepSeek's OpenAI-compatible endpoint.
+`ResearchReport.findings` is a list of typed `Evidence` objects (the machine-readable source of truth). `summary` is the human-readable view. No LangChain, LangGraph, or CrewAI.
 
 ## Setup
 
@@ -27,6 +30,7 @@ uv sync --group dev
 cp .env.example .env
 # set DEEPSEEK_API_KEY
 # optionally SERPER_API_KEY or TAVILY_API_KEY for web_search
+# optionally MOMENTUM_ENGINE_DIR pointing at momentum-tail-risk-monitor
 ```
 
 ## Usage
@@ -50,10 +54,18 @@ Each run writes `reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/`:
 | File | Purpose |
 | --- | --- |
 | `task_board.json` | Full task history with timestamps |
-| `sub_reports/{task_id}_{profile}.md` | One report per sub-agent |
+| `sub_reports/{task_id}_{profile}.json` | Canonical `ResearchReport` (Evidence[]) |
+| `sub_reports/{task_id}_{profile}.md` | Human-readable rendering of the same report |
+| `verification.json` / `verification.md` | Independent Evidence[] audit |
 | `synthesis.md` / `synthesis.json` | Final PM brief |
 
-`--resume` reloads the board, retries unfinished tasks, and synthesizes if needed.
+`--resume` reloads JSON reports first. Markdown-only leftovers from older sessions become a low-confidence compatibility report.
+
+## Runtime bounds
+
+Each sub-agent is capped by `LoopBudget`: 8 ReAct turns, 45s overall deadline, 20s per LLM call, 10s per tool. Cancellation (`asyncio.CancelledError`) propagates. Unknown analyst profiles and off-allowlist tools fail closed. `shell` is not part of normal research capabilities.
+
+After verification, the coordinator may dispatch at most one extra follow-up round (default 2 tasks) for `rejected` / `unchecked` evidence, then re-verify once. Verified items are not reopened. `--mode single` does not follow up.
 
 ## Tools
 
@@ -61,9 +73,9 @@ Each run writes `reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/`:
 | --- | --- |
 | `web_search` | Serper, then Tavily. Clear error if neither key is set. |
 | `file_reader` | `.md` `.txt` `.csv` (first 100 rows) `.json`. Refuses paths outside the project. |
-| `engine_query` | Deterministic mock risk state. `# TODO: wire to actual engine`. |
+| `engine_query` | Reads `momentum-tail-risk-monitor` snapshots (`latest_assessment.json` / dated `structured_snapshot.json`). Market/book-level, not a ticker API. Labeled mock if no snapshot is found. |
 | `market_data` | yfinance OHLCV table (period default `3mo`). |
-| `shell` | Project-cwd subprocess, 30s timeout, command printed first. |
+| `shell` | Implemented but **not** assigned to research profiles. Not used in normal flows. |
 
 ## Models and cost
 
