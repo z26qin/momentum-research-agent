@@ -24,6 +24,8 @@ from momentum_research_agent.models.schemas import (
 )
 from momentum_research_agent.state.reports import persist_research_report
 from momentum_research_agent.state.traces import append_traces
+from momentum_research_agent.state.prompt_memory import overlay_text
+from momentum_research_agent.state.trajectory import append_trajectory
 from momentum_research_agent.tools import authorize_research_tools
 from momentum_research_agent.tools.registry import (
     ToolContext,
@@ -42,7 +44,11 @@ def load_profile(profile: str, project_root: Path) -> str:
     ]
     for path in candidates:
         if path.exists():
-            return path.read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8")
+            overlay = overlay_text(project_root)
+            if overlay:
+                return f"{text.rstrip()}\n\n{overlay}\n"
+            return text
     known = ", ".join(p.stem for p in (Path(__file__).parent / "profiles").glob("*.md"))
     raise FileNotFoundError(f"Unknown profile '{profile}'. Available: {known}")
 
@@ -168,6 +174,14 @@ class SubAgent:
             )
             if event is not None:
                 traces.append(event)
+            append_trajectory(
+                session_dir,
+                tool=name,
+                arguments=arguments,
+                observation=result,
+                agent_id=task.id,
+                agent_role=task.profile,
+            )
             if self.on_progress is not None:
                 self.on_progress(task.id, tool_calls, local_usage.total_tokens)
             if self.verbose and self.console is not None:

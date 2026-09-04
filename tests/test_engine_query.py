@@ -54,6 +54,8 @@ async def test_engine_query_falls_back_to_labeled_mock(
     raw = await engine_query("NVDA", start="2026-01-01", end="2026-05-29")
     payload = json.loads(raw)
     assert payload["source"] == "mock"
+    assert payload["pipeline_run"] is False
+    assert payload["delivery_contract"]["verdict"] == "fail"
     assert payload["ticker"] == "NVDA"
     assert "MOCK DATA" in payload["note"]
     assert payload["risk_state"] in {"normal", "bear_low_volatility", "panic_elevated"}
@@ -73,6 +75,8 @@ async def test_engine_query_reads_latest_assessment(
     raw = await engine_query("NVDA", end="2026-05-29")
     payload = json.loads(raw)
     assert payload["source"] == "momentum-tail-risk-monitor"
+    assert payload["pipeline_run"] is False
+    assert payload["delivery_contract"]["verdict"] == "pass_with_caveats"
     assert payload["risk_state"] == "normal"
     assert payload["regime"] == "FRAGILITY_BUILDING"
     assert payload["pm_posture"] == "escalate_for_pm_review"
