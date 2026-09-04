@@ -1,0 +1,24 @@
+name: Apodex gap probe
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  probe-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v4
+      - name: Install
+        run: uv sync --group dev
+      - name: Tests
+        run: uv run pytest
+      - name: Probe this HEAD
+        run: python3 scripts/probe_apodex_gap.py HEAD
+      - name: Probe origin/main
+        run: python3 scripts/probe_apodex_gap.py origin/main
+        continue-on-error: true

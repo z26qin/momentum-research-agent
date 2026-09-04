@@ -1,0 +1,319 @@
+{
+  "schema_version": 1,
+  "purpose": "Status bar for a vertical Apodex-style closed-loop research agent focused on US equity momentum factor risk (not a general Heavy-Duty Solver).",
+  "target": {
+    "shape": "Apodex 1.1 managed loop: gaps → Task Pipeline → executable environment + coordination → traces → eval → next round",
+    "domain": "US equity momentum factor risk (Daniel-Moskowitz crash, crowding, unwind). Overlay profiles are inputs to that question, not separate products.",
+    "not_in_scope": "General-purpose Heavy-Duty Solver, SFT/RL on DeepSeek weights, AgentBus, unbounded follow-up"
+  },
+  "status_bar": {
+    "main_score": 38,
+    "main_bar": "[████████░░░░░░░░░░░░]",
+    "band": "verified_runtime",
+    "implemented_on_main": [
+      "disk TaskBoard",
+      "decompose / parallel dispatch / synthesize",
+      "ReAct + tools",
+      "independent Verifier + static audit",
+      "one-round follow-up",
+      "engine snapshot adapter (mock fallback)",
+      "in-session verification.json gap ledger (gaps[] + traces[])",
+      "traces.jsonl + engine/search replay",
+      "cross-session reports/gap_ledger.jsonl",
+      "seed_open_gaps at most 2 kind=gap",
+      "resolve_consumed_gaps CLOSED or back to OPEN"
+    ],
+    "implemented_not_on_main": [
+      "PR #10: live run_mvp subprocess, shallow V_D, kind=replan, prompt overlay, --eval writeback, 49MB vendored engine (do not merge as-is)"
+    ],
+    "left": [
+      "real DM engine via upstream pin, not a vendored src+parquet tree",
+      "delivery verifier V_D independent of subprocess exit",
+      "live replan / staged return / branch stop (not retry engine_query)",
+      "prompt/tool evolution from traces that does not leak into the verifier",
+      "eval with more than one frozen date whose failures can reopen"
+    ]
+  },
+  "baseline_commit": "ef03fa5a5f7020ff7601b4cc241e8f595a74eddb",
+  "last_reviewed_sha": "5e970eff4bbcae09d6777ab479713e7ef729a58e",
+  "last_reviewed_at": "2026-09-04T18:40:00Z",
+  "reference": {
+    "paper": "Apodex 1.1: Scaling Agentic Intelligence for Complex Work",
+    "arxiv": "https://arxiv.org/html/2608.23283",
+    "frontier_agent": "https://github.com/ApodexAI/FrontierAgent",
+    "definition": "Self-evolution is the managed loop: observed gaps → Task Pipeline → Environment Scaling + Agentic Coordination Scaling → SFT/agentic RL → evaluation/failure attribution. It is not the model rewriting its own weights."
+  },
+  "overall": {
+    "score_0_to_100": 38,
+    "band": "verified_runtime",
+    "summary": "PR #6+#7 landed: next Coordinator.run consumes at most two OPEN gap_ledger.jsonl rows as kind=gap tasks, then writes those rows CLOSED or back to OPEN after verify. The session boundary is closed. Main still has no V_D, no live replan, no prompt evolution, no eval writeback."
+  },
+  "dimensions": [
+    {
+      "id": "gap_mining",
+      "name": "Capability-gap mining",
+      "score_0_to_100": 40,
+      "apodex": "Classify real-task failures, benchmark errors, and user/expert feedback into capability deficiencies.",
+      "present": [
+        "BLOCKED tasks and Task.error.",
+        "EvidenceVerdict rejected/unchecked is claim-level failure labeling.",
+        "verification.json compiles GapKind rows with trace_ids.",
+        "reports/gap_ledger.jsonl with MomentumCapability and OPEN/CONSUMED/CLOSED (d6aeae8 / d5411ab)."
+      ],
+      "missing": [
+        "Classification is keyword regex, not clustered real-task failures.",
+        "SOURCE_QUALITY rows are never planted."
+      ]
+    },
+    {
+      "id": "task_pipeline",
+      "name": "Task Pipeline",
+      "score_0_to_100": 22,
+      "apodex": "Convert classified gaps into the next task distribution with family-specific verification before training signal.",
+      "present": [
+        "followup_specs() emits at most 2 repair tasks from rejected/unchecked evidence.",
+        "seed_open_gaps() plants at most 2 kind=gap tasks (crowding→flow, unwind/engine→momentum)."
+      ],
+      "missing": [
+        "Gap tasks repair prior claims; they are not a factory of new momentum research worlds.",
+        "SOURCE_QUALITY never becomes a task."
+      ]
+    },
+    {
+      "id": "environment_scaling",
+      "name": "Environment Scaling",
+      "score_0_to_100": 22,
+      "apodex": "File / search / code worlds with state, tools, transitions, budgets, delivery contract D, and verifier V_D.",
+      "present": [
+        "engine_adapter reads momentum-tail-risk-monitor snapshots.",
+        "Labeled mock fallback when no snapshot is present.",
+        "web_search, file_reader, market_data, 30s shell."
+      ],
+      "missing": [
+        "No live DM pipeline run on main.",
+        "No delivery contract V_D independent of subprocess exit."
+      ]
+    },
+    {
+      "id": "coordination_scaling",
+      "name": "Agentic Coordination Scaling",
+      "score_0_to_100": 32,
+      "apodex": "Trained policy for decompose, delegate, staged return, shared-state revision, replan, and stop obsolete branches. Runtime: live task board, async human intervention, asymmetric verification, adaptive team effort.",
+      "present": [
+        "Coordinator path: decompose → gap seed → dispatch → verify → follow_up → verify → synthesize.",
+        "Disk TaskBoard; sub-agent failure does not abort the run."
+      ],
+      "missing": [
+        "decompose.md still requires self-contained tasks.",
+        "No mid-run shared-plan edits, branch stop, or async human intervention.",
+        "should_replan / maybe_replan on inbound PRs do not count as live_replan."
+      ]
+    },
+    {
+      "id": "asymmetric_verification",
+      "name": "Asymmetric / independent verification",
+      "score_0_to_100": 40,
+      "apodex": "Narrow verifier attacks a claim + evidence + delivery constraint; does not re-solve the whole problem.",
+      "present": [
+        "Independent Verifier judges existing evidence_ids only.",
+        "static_audit fail-closed; more_conservative merge with LLM re-check.",
+        "Verifier compiles the session ledger (finalize_ledger)."
+      ],
+      "missing": [
+        "No statement-level counterexample attack on crowding/unwind claims."
+      ]
+    },
+    {
+      "id": "training_loop",
+      "name": "Trajectory learning (SFT / agentic RL or system analogue)",
+      "score_0_to_100": 12,
+      "apodex": "Unified SFT then agentic RL (PIVOT-RL) over executable and coordination trajectories. Self-evolution reallocates training effort; it does not let the model edit itself.",
+      "present": [
+        "Frozen DeepSeek API client. Models are not trained here.",
+        "traces.jsonl + ToolTrace + replay_trace for engine_query / web_search."
+      ],
+      "missing": [
+        "No prompt/profile/tool evolution from traces on main."
+      ]
+    },
+    {
+      "id": "eval_attribution",
+      "name": "Evaluation and failure attribution",
+      "score_0_to_100": 20,
+      "apodex": "ReAct vs Agent Team eval; capability analysis feeds the next Task Pipeline.",
+      "present": [
+        "Unit tests including audit, verifier, followup, engine adapter, ledger and gap-seed/resolve replay (no live API)."
+      ],
+      "missing": [
+        "No working-capability benchmark; test/eval failures do not enter a reopenable eval writeback on main."
+      ]
+    }
+  ],
+  "last_probe": {
+    "ran_at": "2026-09-04T18:40:00Z",
+    "command": "python3 scripts/probe_apodex_gap.py origin/main",
+    "schema_signals": 22,
+    "note": "Schema +1 vs the 21-signal probe on PR #1: added gap_seed (def seed_open_gaps). Old 16/21 ≡ new 17/22.",
+    "main": {
+      "ref": "origin/main",
+      "sha": "5e970eff4bbcae09d6777ab479713e7ef729a58e",
+      "hits": {
+        "gap_mining": [
+          "task_error_field",
+          "blocked_status",
+          "evidence_verdict",
+          "capability_ledger"
+        ],
+        "task_pipeline": [
+          "followup_specs",
+          "task_kind_followup",
+          "gap_seed"
+        ],
+        "environment_scaling": [
+          "engine_adapter",
+          "labeled_mock_fallback"
+        ],
+        "coordination_scaling": [
+          "disk_task_board",
+          "coordinator_follow_up"
+        ],
+        "asymmetric_verification": [
+          "verifier_class",
+          "static_audit",
+          "conservative_merge"
+        ],
+        "training_loop": [
+          "trajectory_log"
+        ],
+        "eval_attribution": [
+          "unit_tests",
+          "verifier_tests"
+        ]
+      },
+      "still_missing": [
+        "new_environment_factory",
+        "delivery_verifier",
+        "live_replan",
+        "prompt_evolution",
+        "working_capability_bench"
+      ]
+    }
+  },
+  "nearest_moves": [
+    "Keep the engine as subprocess + upstream pin. Do not vendor fixtures/engine/src and 38MB parquet.",
+    "Attach a V_D that re-derives risk_state / fingerprint / as_of; crowding/unwind assertions stay on the verifier.",
+    "Replan only on BLOCKED or true mock / verdict=fail. engine_query without end must not silently skip the pipeline and trip replan.",
+    "Overlay research profiles only; Verifier must not load profile_hints.md.",
+    "Frozen eval with at least two as-of dates (including a non-normal state) whose failures can reopen."
+  ],
+  "inbound_prs": [
+    {
+      "number": 10,
+      "url": "https://github.com/z26qin/momentum-research-agent/pull/10",
+      "title": "Unify engine root, traces, and dispatch wave",
+      "head_sha": "e490aa5c6631b1b4ab22f5c8a6763fcbd905dc73",
+      "state": "open",
+      "scored_at": "2026-09-04T18:40:00Z",
+      "predicted_overall": 48,
+      "predicted_band": "verified_runtime",
+      "predicted_scores": {
+        "gap_mining": 42,
+        "task_pipeline": 26,
+        "environment_scaling": 48,
+        "coordination_scaling": 38,
+        "asymmetric_verification": 38,
+        "training_loop": 26,
+        "eval_attribution": 32
+      },
+      "note": "Do not merge as-is. Probe 19/22 (delivery_verifier + prompt_evolution; live_replan still missing — correct). Shallow V_D, over-broad replan, overlay leaks into verifier, 49MB vendored engine, sync 90s warm. The three refactors vs #9 (single resolve_engine_root, traces.jsonl only, shared _dispatch_wave) are worth a small follow-up PR without the vendor tree."
+    },
+    {
+      "number": 9,
+      "url": "https://github.com/z26qin/momentum-research-agent/pull/9",
+      "title": "True DM engine loop: live run_mvp, replan, overlay, --eval",
+      "head_sha": "67692b31c8905aded4f645b354f3305b2bacca59",
+      "state": "open",
+      "scored_at": "2026-09-04T18:40:00Z",
+      "predicted_overall": 48,
+      "predicted_band": "verified_runtime",
+      "note": "Engine-loop subset of #10. Do not merge both. Review the loop on #9 only if splitting; #10 is the combined path."
+    },
+    {
+      "number": 7,
+      "url": "https://github.com/z26qin/momentum-research-agent/pull/7",
+      "title": "Close planted gaps from verification, not at seed time",
+      "head_sha": "d5411ab599334e72d4ca49fbd78df52f94af9fd8",
+      "state": "merged",
+      "scored_at": "2026-09-04T18:40:00Z",
+      "predicted_overall": 38,
+      "predicted_band": "verified_runtime",
+      "note": "Merged to main as 5e970ef. Official overall 30 → 38 together with #6.",
+      "merged_at": "2026-09-04T16:27:20Z"
+    },
+    {
+      "number": 6,
+      "url": "https://github.com/z26qin/momentum-research-agent/pull/6",
+      "title": "Consume prior-session gaps as kind=gap tasks",
+      "head_sha": "d6aeae8",
+      "state": "merged",
+      "scored_at": "2026-09-04T18:40:00Z",
+      "predicted_overall": 34,
+      "predicted_band": "verified_runtime",
+      "note": "Merged to main as d533120. Seed without resolve would have left rows CONSUMED forever; score 38 only after #7.",
+      "merged_at": "2026-09-04T16:04:15Z"
+    },
+    {
+      "number": 5,
+      "url": "https://github.com/z26qin/momentum-research-agent/pull/5",
+      "title": "Turn verification.json into a momentum gap ledger",
+      "head_sha": "327738c",
+      "state": "merged",
+      "scored_at": "2026-09-04T16:00:00Z",
+      "predicted_overall": 30,
+      "predicted_band": "verified_runtime",
+      "note": "Merged to main as abd007b (with #4 duplicate). Official overall 22 → 30. Session ledger only.",
+      "merged_at": "2026-09-04T14:51:41Z"
+    },
+    {
+      "number": 3,
+      "url": "https://github.com/z26qin/momentum-research-agent/pull/3",
+      "title": "Close the momentum loop: V_D, frozen replay, learned prompts, eval writeback",
+      "head_sha": "20a6be9dbf05e4b39da0f668c2504e65cd458552",
+      "state": "open",
+      "scored_at": "2026-09-04T18:40:00Z",
+      "predicted_overall": 50,
+      "predicted_band": "verified_runtime",
+      "note": "Superseded. JSON snapshot replay is no longer a V_D pass path per #9/#10. Close."
+    },
+    {
+      "number": 2,
+      "url": "https://github.com/z26qin/momentum-research-agent/pull/2",
+      "title": "Tighten engine adapter and one-round follow-up",
+      "head_sha": "5212820ccb54293d7c585ce13b3c4e2a49a1dce2",
+      "state": "merged",
+      "scored_at": "2026-09-04T14:20:00Z",
+      "predicted_overall": 22,
+      "predicted_band": "verified_runtime",
+      "note": "Merged to main as 5212820. Official overall score moved 8 → 22.",
+      "merged_at": "2026-09-04T14:24:33Z"
+    },
+    {
+      "number": 1,
+      "url": "https://github.com/z26qin/momentum-research-agent/pull/1",
+      "title": "Add standing Apodex self-improvement gap scorecard",
+      "head_sha": "cc91f138180e2c0fbcebf61021b55a141c4c39a5",
+      "state": "open",
+      "scored_at": "2026-09-04T18:40:00Z",
+      "predicted_overall": 38,
+      "predicted_band": "verified_runtime",
+      "note": "Stale at 30 after #5. This review supersedes its official score. Merge this branch instead of rebasing the old cursor/ scorecard."
+    }
+  ],
+  "explicitly_not_this_repo": [
+    "SFT / RL on DeepSeek weights",
+    "LangChain / LangGraph / CrewAI",
+    "Web UI, Docker, database, MCP server",
+    "AgentBus / unbounded follow-up loops",
+    "Vendoring momentum-tail-risk-monitor src + full parquet into this orchestrator"
+  ]
+}
