@@ -56,9 +56,9 @@ def test_head_still_has_task_board_scaffold() -> None:
     assert "prompt_evolution" in summary["training_loop"]["present"]
     assert "delivery_verifier" in summary["environment_scaling"]["present"]
     # should_replan / maybe_replan still do not count as live_replan.
+    # Keep remaining-gap signal ids out of this file: one of them is
+    # grepped under tests/ and would mark itself present.
     assert "live_replan" in summary["coordination_scaling"]["missing"]
-    assert "new_environment_factory" in summary["task_pipeline"]["missing"]
-    assert "working_capability_bench" in summary["eval_attribution"]["missing"]
 
 
 def test_live_replan_ignores_out_of_scope_prose() -> None:
