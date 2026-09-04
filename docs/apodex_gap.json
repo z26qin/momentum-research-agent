@@ -7,21 +7,18 @@
     "not_in_scope": "General-purpose Heavy-Duty Solver, SFT/RL on DeepSeek weights, AgentBus, unbounded follow-up"
   },
   "status_bar": {
-    "main_score": 8,
-    "main_bar": "[██░░░░░░░░░░░░░░░░░░]",
-    "pr2_predicted_score": 22,
-    "pr2_bar": "[████░░░░░░░░░░░░░░░░]",
+    "main_score": 22,
+    "main_bar": "[████░░░░░░░░░░░░░░░░]",
+    "band": "verified_runtime",
     "implemented_on_main": [
       "disk TaskBoard",
-      "one-shot decompose / parallel dispatch / synthesize",
+      "decompose / parallel dispatch / synthesize",
       "ReAct + tools",
-      "mock engine_query"
+      "independent Verifier + static audit",
+      "one-round follow-up",
+      "engine snapshot adapter (mock fallback)"
     ],
-    "implemented_not_on_main": [
-      "independent Verifier + static audit (PR #2)",
-      "one-round follow-up (PR #2)",
-      "engine snapshot adapter (PR #2)"
-    ],
+    "implemented_not_on_main": [],
     "left": [
       "cross-session momentum gap ledger",
       "task factory from gaps",
@@ -32,92 +29,85 @@
     ]
   },
   "baseline_commit": "ef03fa5a5f7020ff7601b4cc241e8f595a74eddb",
-  "last_reviewed_sha": "ef03fa5a5f7020ff7601b4cc241e8f595a74eddb",
-  "last_reviewed_at": "2026-09-04T14:12:00Z",
+  "last_reviewed_sha": "5212820ccb54293d7c585ce13b3c4e2a49a1dce2",
+  "last_reviewed_at": "2026-09-04T14:25:00Z",
   "reference": {
     "paper": "Apodex 1.1: Scaling Agentic Intelligence for Complex Work",
     "arxiv": "https://arxiv.org/html/2608.23283",
     "definition": "Self-evolution is the managed loop: observed gaps → Task Pipeline → Environment Scaling + Agentic Coordination Scaling → SFT/agentic RL → evaluation/failure attribution. It is not the model rewriting its own weights."
   },
   "overall": {
-    "score_0_to_100": 8,
-    "band": "scaffold_only",
-    "summary": "Phase 1 orchestration harness (decompose/dispatch/synthesize + disk task board). None of the self-improvement loop stages exist as code."
+    "score_0_to_100": 22,
+    "band": "verified_runtime",
+    "summary": "PR #2 landed: independent Verifier, one-round follow-up, engine snapshot adapter. Closed-loop second half (gap ledger, task factory, traces) still absent."
   },
   "dimensions": [
     {
       "id": "gap_mining",
       "name": "Capability-gap mining",
-      "score_0_to_100": 5,
+      "score_0_to_100": 15,
       "apodex": "Classify real-task failures, benchmark errors, and user/expert feedback into capability deficiencies.",
       "present": [
-        "Coordinator marks failed sub-agents BLOCKED and mentions the gap in synthesis (coordinator.py dispatch_all/synthesize).",
-        "Task.error stores a free-text exception string (schemas.Task, task_board.fail)."
+        "BLOCKED tasks and Task.error.",
+        "EvidenceVerdict rejected/unchecked is claim-level failure labeling."
       ],
       "missing": [
-        "No taxonomy (tool misuse, evidence gap, coordination failure, verifier miss, etc.).",
-        "Session reports are not ingested as a gap corpus.",
-        "No user/expert feedback channel into the board."
+        "No cross-session momentum capability ledger.",
+        "verification.json is per-session only."
       ]
     },
     {
       "id": "task_pipeline",
       "name": "Task Pipeline",
-      "score_0_to_100": 0,
+      "score_0_to_100": 8,
       "apodex": "Convert classified gaps into the next task distribution with family-specific verification before training signal.",
       "present": [
-        "One-shot decompose prompt produces 2–5 independent tasks from the user question (prompts/decompose.md)."
+        "followup_specs() emits at most 2 repair tasks from rejected/unchecked evidence.",
+        "One-shot decompose from the user question still exists."
       ],
       "missing": [
-        "No gap → new-task generator.",
-        "No held-out task library, occupation/deliverable registry, or difficulty calibration."
+        "Follow-up is one repair round, not a factory of new momentum research worlds."
       ]
     },
     {
       "id": "environment_scaling",
       "name": "Environment Scaling",
-      "score_0_to_100": 10,
+      "score_0_to_100": 22,
       "apodex": "File / search / code worlds with state, tools, transitions, budgets, delivery contract D, and verifier V_D.",
       "present": [
-        "Thin tools: web_search, file_reader (read-only), market_data, 30s shell, mock engine_query.",
-        "file_reader refuses paths outside the project."
+        "engine_adapter reads momentum-tail-risk-monitor snapshots.",
+        "Labeled mock fallback when no snapshot is present.",
+        "web_search, file_reader, market_data, 30s shell."
       ],
       "missing": [
-        "engine_query is hash-seeded mock data (tools/engine_query.py TODO).",
-        "No workspace contract, provenance, replay manifest, or delivery verifier.",
-        "shell is unsandboxed; no file-write / artifact publisher."
+        "No live DM pipeline run.",
+        "No delivery contract V_D."
       ]
     },
     {
       "id": "coordination_scaling",
       "name": "Agentic Coordination Scaling",
-      "score_0_to_100": 20,
+      "score_0_to_100": 32,
       "apodex": "Trained policy for decompose, delegate, staged return, shared-state revision, replan, and stop obsolete branches. Runtime: live task board, async human intervention, asymmetric verification, adaptive team effort.",
       "present": [
-        "Lead coordinator + parallel sub-agents (coordinator.run).",
-        "Disk-backed TaskBoard with status machine and save-on-mutation (task_board.py).",
-        "--resume requeues ACTIVE/BLOCKED (crash recovery, not intervention).",
-        "Sub-agent failure does not abort the coordinator (asyncio.gather return_exceptions=True)."
+        "Coordinator path: decompose → dispatch → verify → follow_up → verify → synthesize.",
+        "Disk TaskBoard; sub-agent failure does not abort the run."
       ],
       "missing": [
-        "Decomposition is one-shot; no mid-run board edits, staged returns, or branch termination.",
-        "Sub-agents are independent by design (decompose.md: self-contained, no other-task results).",
-        "Roles are a fixed five-profile catalogue, not problem-induced.",
-        "No async human intervention, Statement Review, or adaptive Max Team Effort."
+        "No mid-run shared-plan edits, branch stop, or async human intervention."
       ]
     },
     {
       "id": "asymmetric_verification",
       "name": "Asymmetric / independent verification",
-      "score_0_to_100": 5,
+      "score_0_to_100": 40,
       "apodex": "Narrow verifier attacks a claim + evidence + delivery constraint; does not re-solve the whole problem.",
       "present": [
-        "Synthesize prompt asks to flag dissenting views (prompts/synthesize.md).",
-        "JSON schema retry once on ValidationError (_complete_json)."
+        "Independent Verifier judges existing evidence_ids only.",
+        "static_audit fail-closed; more_conservative merge with LLM re-check."
       ],
       "missing": [
-        "No independent reviewer agent, claim-level attack, or source triangulation.",
-        "Synthesizer sees generator outputs in the same context (anchoring)."
+        "No statement-level counterexample attack on crowding/unwind claims."
       ]
     },
     {
@@ -126,55 +116,60 @@
       "score_0_to_100": 0,
       "apodex": "Unified SFT then agentic RL (PIVOT-RL) over executable and coordination trajectories. Self-evolution reallocates training effort; it does not let the model edit itself.",
       "present": [
-        "Frozen DeepSeek API client (config.make_client). Models are not trained here."
+        "Frozen DeepSeek API client. Models are not trained here."
       ],
       "missing": [
-        "No trajectory logger (actions, observations, file deltas, termination reason).",
-        "No system-level analogue: prompt/profile/tool evolution from session traces.",
-        "AGENTS.md forbids extra agent frameworks; a file-based gap ledger + prompt patches would be the in-repo analogue."
+        "No action/observation replay log.",
+        "No prompt/profile/tool evolution from traces."
       ]
     },
     {
       "id": "eval_attribution",
       "name": "Evaluation and failure attribution",
-      "score_0_to_100": 8,
+      "score_0_to_100": 18,
       "apodex": "ReAct vs Agent Team eval; capability analysis feeds the next Task Pipeline.",
       "present": [
-        "Unit tests for task board, ReAct loop, coordinator file-writing (no live API)."
+        "Unit tests including audit, verifier, followup, engine adapter (no live API)."
       ],
       "missing": [
-        "No working-capability benchmark, delivery rubric, or replayable eval worlds.",
-        "Test failures do not become capability gaps."
+        "No working-capability benchmark; test failures do not enter a gap ledger."
       ]
     }
   ],
   "last_probe": {
-    "ran_at": "2026-09-04T14:16:00Z",
-    "command": "python3 scripts/probe_apodex_gap.py <ref>",
+    "ran_at": "2026-09-04T14:25:00Z",
+    "command": "python3 scripts/probe_apodex_gap.py origin/main",
     "main": {
       "ref": "origin/main",
-      "sha": "ef03fa5a5f7020ff7601b4cc241e8f595a74eddb",
-      "hits": {
-        "gap_mining": ["task_error_field", "blocked_status"],
-        "task_pipeline": [],
-        "environment_scaling": ["labeled_mock_fallback"],
-        "coordination_scaling": ["disk_task_board"],
-        "asymmetric_verification": [],
-        "training_loop": [],
-        "eval_attribution": ["unit_tests"]
-      }
-    },
-    "inbound_pr_2": {
-      "ref": "origin/cursor/cloud-agent-1788530459636-8e4tt",
       "sha": "5212820ccb54293d7c585ce13b3c4e2a49a1dce2",
       "hits": {
-        "gap_mining": ["task_error_field", "blocked_status", "evidence_verdict"],
-        "task_pipeline": ["followup_specs", "task_kind_followup"],
-        "environment_scaling": ["engine_adapter", "labeled_mock_fallback"],
-        "coordination_scaling": ["disk_task_board", "coordinator_follow_up"],
-        "asymmetric_verification": ["verifier_class", "static_audit", "conservative_merge"],
+        "gap_mining": [
+          "task_error_field",
+          "blocked_status",
+          "evidence_verdict"
+        ],
+        "task_pipeline": [
+          "followup_specs",
+          "task_kind_followup"
+        ],
+        "environment_scaling": [
+          "engine_adapter",
+          "labeled_mock_fallback"
+        ],
+        "coordination_scaling": [
+          "disk_task_board",
+          "coordinator_follow_up"
+        ],
+        "asymmetric_verification": [
+          "verifier_class",
+          "static_audit",
+          "conservative_merge"
+        ],
         "training_loop": [],
-        "eval_attribution": ["unit_tests", "verifier_tests"]
+        "eval_attribution": [
+          "unit_tests",
+          "verifier_tests"
+        ]
       },
       "still_missing": [
         "capability_ledger",
@@ -188,11 +183,11 @@
     }
   },
   "nearest_moves": [
-    "Persist a failure taxonomy from task_board.json + sub-reports after each session.",
-    "Make the task board live: staged sub-agent returns, coordinator mid-run add/stop/replan.",
-    "Independent statement review of synthesis claims against cited sources.",
-    "Replace engine_query mock with the real momentum engine so a verifier can exist.",
-    "Log tool traces in a replayable session record (the raw material for any later learning)."
+    "Turn verification.json rejected/unchecked into a cross-session momentum gap ledger.",
+    "Live task board: mid-run add/stop/replan (follow-up is still one bounded round).",
+    "Narrow statement review of crowding/unwind claims.",
+    "Upgrade snapshot adapter to a verifiable live DM engine run (V_D).",
+    "Log replayable engine/search traces."
   ],
   "inbound_prs": [
     {
@@ -200,7 +195,7 @@
       "url": "https://github.com/z26qin/momentum-research-agent/pull/2",
       "title": "Tighten engine adapter and one-round follow-up",
       "head_sha": "5212820ccb54293d7c585ce13b3c4e2a49a1dce2",
-      "state": "draft",
+      "state": "merged",
       "scored_at": "2026-09-04T14:20:00Z",
       "predicted_overall": 22,
       "predicted_band": "verified_runtime",
@@ -222,7 +217,8 @@
         "logs_action_observation_trace": false,
         "react_trajectory_mention": "prompt prose in sub_agent.py only, not a replay log"
       },
-      "note": "Second pass on 5212820: Coordinator.verify/follow_up exist; session writes verification.json. LoopBudget is turn/timeout caps, not Apodex Max Team Effort. No Statement Review, no action-observation trace. Training loop stays 0. Official scores unchanged until merge."
+      "note": "Merged to main as 5212820. Official overall score moved 8 → 22. Training loop remains 0.",
+      "merged_at": "2026-09-04T14:24:33Z"
     }
   ],
   "explicitly_not_this_repo": [
