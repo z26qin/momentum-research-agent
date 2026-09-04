@@ -11,8 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from momentum_research_agent.config import reports_root
-from momentum_research_agent.models.schemas import GapCapability, GapState
-from momentum_research_agent.state.gap_ledger import failure_brief, ledger_path, load_ledger
+from momentum_research_agent.models.schemas import GapLedgerStatus, MomentumCapability
 from momentum_research_agent.state.persistence import save_json, save_text
 from momentum_research_agent.state.trajectory import (
     ENGINE_FAILURE_MARKERS,
@@ -24,25 +23,22 @@ from momentum_research_agent.state.trajectory import _failure_marker, _read_even
 HINTS_NAME = "profile_hints.md"
 EVOLUTION_NAME = "prompt_evolution.json"
 
-_CAPABILITY_RULES: dict[GapCapability, str] = {
-    GapCapability.CROWDING: (
+_CAPABILITY_RULES: dict[MomentumCapability, str] = {
+    MomentumCapability.CROWDING: (
         "Crowding claims need a retrieved FINRA SI / ETF flow / options source. "
         "Do not rest on engine crowding_score alone."
     ),
-    GapCapability.UNWIND_CRASH: (
+    MomentumCapability.UNWIND_CRASH: (
         "Unwind/crash claims need Daniel–Moskowitz `risk_state` / `regime` from "
         "engine_query plus V_D pass (or pass_with_caveats with the caveat named)."
     ),
-    GapCapability.ENGINE_FRESHNESS: (
+    MomentumCapability.ENGINE_FRESHNESS: (
         "Prefer a live `scripts/run_monitor.py` PIT assessment over a stale JSON "
         "snapshot. source=mock and V_D fail are unlabeled."
     ),
-    GapCapability.SOURCE_QUALITY: (
+    MomentumCapability.SOURCE_QUALITY: (
         "Every Evidence row needs a retrieved URL or engine source_path. "
         "Do not fabricate timestamps."
-    ),
-    GapCapability.OTHER: (
-        "Stay inside US equity momentum factor risk (DM crash / crowding / unwind)."
     ),
 }
 
@@ -81,7 +77,9 @@ def decompose_user_message(
     session_dir: Path | None = None,
 ) -> str:
     parts = [f"Research question:\n\n{question}"]
-    brief = failure_brief(ledger_path(project_root))
+    from momentum_research_agent.coordinator.gap_seed import failure_brief
+
+    brief = failure_brief(project_root)
     if brief:
         parts.append(
             "Known gaps from prior sessions (do not invent tasks titled Gap:; "
@@ -139,7 +137,9 @@ def refresh_profile_hints(
     session_dir: Path | None = None,
 ) -> Path | None:
     """Rewrite reports/profile_hints.md from current ledger + traces."""
-    brief = failure_brief(ledger_path(project_root))
+    from momentum_research_agent.coordinator.gap_seed import failure_brief
+
+    brief = failure_brief(project_root)
     traces = trajectory_failure_brief(
         reports_root(project_root),
         exclude=session_dir,
@@ -179,12 +179,13 @@ def refresh_profile_hints(
     return path
 
 
-def _observed_capabilities(project_root: Path) -> list[GapCapability]:
-    by_id = load_ledger(ledger_path(project_root))
-    ordered: list[GapCapability] = []
-    seen: set[GapCapability] = set()
-    for record in by_id.values():
-        if record.state is GapState.CONSUMED and record.capability in seen:
+def _observed_capabilities(project_root: Path) -> list[MomentumCapability]:
+    from momentum_research_agent.coordinator.gap_seed import load_rows
+
+    ordered: list[MomentumCapability] = []
+    seen: set[MomentumCapability] = set()
+    for record in load_rows(project_root):
+        if record.status is GapLedgerStatus.CONSUMED and record.capability in seen:
             continue
         if record.capability in seen:
             continue

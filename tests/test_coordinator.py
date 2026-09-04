@@ -342,11 +342,12 @@ async def test_follow_up_dispatches_once_for_unchecked_evidence(
 
 
 def test_seed_from_ledger_consumes_open_gaps(tmp_path: Path) -> None:
-    from momentum_research_agent.models.schemas import TaskKind
-    from momentum_research_agent.state.gap_ledger import (
-        append_from_verification,
-        ledger_path,
-        open_gaps,
+    from momentum_research_agent.coordinator.gap_seed import append_gaps, load_rows
+    from momentum_research_agent.models.schemas import (
+        GapEntry,
+        GapKind,
+        GapLedgerStatus,
+        TaskKind,
     )
 
     coordinator = Coordinator(
@@ -358,51 +359,43 @@ def test_seed_from_ledger_consumes_open_gaps(tmp_path: Path) -> None:
         coordinator_model_name="deepseek-reasoner",
         max_sub_agents=4,
     )
-    append_from_verification(
-        ledger_path(tmp_path),
-        VerificationReport(
-            question="prior",
-            overall_status="fail",
-            summary="prior",
-            verdicts=[
-                EvidenceVerdict(
-                    evidence_id="gap1",
-                    claim="crowding still elevated",
-                    status=VerificationStatus.REJECTED,
-                )
-            ],
-        ),
-        "prior-session",
+    append_gaps(
+        tmp_path,
+        [
+            GapEntry(
+                kind=GapKind.REJECTED_EVIDENCE,
+                claim="crowding still elevated",
+                evidence_id="gap1",
+            )
+        ],
+        session_id="prior-session",
     )
     created = coordinator.seed_from_ledger()
     assert len(created) == 1
     assert created[0].kind is TaskKind.GAP
     assert created[0].title.startswith("Gap:")
-    assert open_gaps(ledger_path(tmp_path)) == []
+    rows = load_rows(tmp_path)
+    assert rows[0].status is GapLedgerStatus.CONSUMED
 
 
 @pytest.mark.asyncio
 async def test_decompose_injects_ledger_brief(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from momentum_research_agent.state.gap_ledger import append_from_verification, ledger_path
+    from momentum_research_agent.coordinator.gap_seed import append_gaps
+    from momentum_research_agent.models.schemas import GapEntry, GapKind
 
-    append_from_verification(
-        ledger_path(tmp_path),
-        VerificationReport(
-            question="prior",
-            overall_status="fail",
-            summary="prior",
-            verdicts=[
-                EvidenceVerdict(
-                    evidence_id="gap1",
-                    claim="crowding still elevated",
-                    status=VerificationStatus.REJECTED,
-                    notes="no url",
-                )
-            ],
-        ),
-        "prior-session",
+    append_gaps(
+        tmp_path,
+        [
+            GapEntry(
+                kind=GapKind.REJECTED_EVIDENCE,
+                claim="crowding still elevated",
+                evidence_id="gap1",
+                notes="no url",
+            )
+        ],
+        session_id="prior-session",
     )
     session_dir = tmp_path / "session"
     client = FakeClient([DECOMPOSE, SYNTHESIS])

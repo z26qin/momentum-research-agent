@@ -1,4 +1,4 @@
-"""Coordinator: warm engine → decompose → dispatch → verify → follow-up → synthesize."""
+"""Coordinator: warm engine → decompose → gap seed → dispatch → verify → follow-up → synthesize."""
 
 from __future__ import annotations
 
@@ -22,7 +22,11 @@ from momentum_research_agent.coordinator.followup import (
     followup_specs,
     is_followup_task,
 )
-from momentum_research_agent.coordinator.gap_tasks import MAX_GAP_SEED_TASKS, gap_task_specs
+from momentum_research_agent.coordinator.gap_seed import (
+    already_gap_seeded,
+    record_session_gaps,
+    seed_open_gaps,
+)
 from momentum_research_agent.coordinator.replan import already_replanned, engine_failure_replan_specs, replan_specs
 from momentum_research_agent.coordinator.task_board import TaskBoard
 from momentum_research_agent.models.schemas import (
@@ -37,12 +41,6 @@ from momentum_research_agent.models.schemas import (
     VerificationReport,
     parse_model_json,
     utcnow,
-)
-from momentum_research_agent.state.gap_ledger import (
-    append_from_verification,
-    ledger_path,
-    mark_consumed,
-    open_gaps,
 )
 from momentum_research_agent.state.persistence import save_text
 from momentum_research_agent.state.prompt_memory import (
@@ -108,10 +106,8 @@ class Coordinator:
         await self.dispatch_all()
         await self.replan_blocked()
         await self.verify()
-        self._record_gaps()
         if await self.follow_up():
             await self.verify()
-            self._record_gaps()
         return await self.synthesize()
 
     async def resume(self) -> SynthesisReport:
@@ -123,6 +119,8 @@ class Coordinator:
         ]
         ran_dispatch = False
         if pending:
+            if not already_gap_seeded(self.board.tasks):
+                self.seed_from_ledger()
             self.board.requeue_unfinished()
             await self.warm_engine()
             await self.dispatch_all()
@@ -139,12 +137,10 @@ class Coordinator:
         existing_verification = load_verification_report(self.session_dir)
         if ran_dispatch or existing_verification is None:
             await self.verify()
-            self._record_gaps()
         else:
             self.verification = existing_verification
             if self._followup_needs_reverify():
                 await self.verify()
-                self._record_gaps()
         json_path = self.session_dir / "synthesis.json"
         session_complete = (json_path.exists() or synthesis_path.exists()) and not ran_dispatch
         if session_complete:
@@ -155,7 +151,6 @@ class Coordinator:
             return parse_model_json(SynthesisReport, synthesis_path.read_text(encoding="utf-8"))
         if await self.follow_up():
             await self.verify()
-            self._record_gaps()
         return await self.synthesize()
 
     async def decompose(self, question: str) -> list[Task]:
@@ -206,50 +201,6 @@ class Coordinator:
                 "cached for engine_query"
             )
         return payload
-
-    def seed_from_ledger(self) -> list[Task]:
-        remaining = max(0, self.max_sub_agents - len(self.board.pending))
-        specs = gap_task_specs(
-            self.board.question,
-            open_gaps(ledger_path(self.project_root)),
-            max_tasks=min(MAX_GAP_SEED_TASKS, remaining),
-        )
-        if not specs:
-            return []
-        created: list[Task] = []
-        consumed: list[str] = []
-        for spec in specs:
-            created.append(
-                self.board.add_task(
-                    spec.title,
-                    spec.assignment,
-                    spec.profile,
-                    kind=spec.kind,
-                )
-            )
-            consumed.extend(spec.evidence_ids)
-        mark_consumed(ledger_path(self.project_root), consumed, self.board.session_id)
-        self.console.print(
-            f"[bold]Gap seed[/bold] — {len(created)} task(s) from the cross-session ledger"
-        )
-        self.console.print(self.render_board_table())
-        return created
-
-    def _record_gaps(self) -> None:
-        if self.verification is None:
-            return
-        written = append_from_verification(
-            ledger_path(self.project_root),
-            self.verification,
-            self.board.session_id,
-            self.sub_reports,
-        )
-        if written:
-            self.console.print(
-                f"[bold]Gap ledger[/bold] — recorded {len(written)} open gap(s) "
-                f"at {ledger_path(self.project_root)}"
-            )
-            refresh_profile_hints(self.project_root, self.session_dir)
 
     async def replan_blocked(self) -> bool:
         """One extra dispatch for BLOCKED runtime or live engine-delivery failures."""
@@ -373,7 +324,35 @@ class Coordinator:
             f"[bold]Verification[/bold] — {self.verification.overall_status}: "
             f"{self.verification.summary}"
         )
+        self.record_gaps()
         return self.verification
+
+    def record_gaps(self) -> None:
+        """Append this session's verification.gaps to reports/gap_ledger.jsonl."""
+        gaps = self.verification.gaps if self.verification is not None else None
+        written = record_session_gaps(
+            self.project_root,
+            self.session_dir,
+            self.board.session_id,
+            report_gaps=gaps,
+        )
+        if written:
+            self.console.print(
+                f"[bold]Gap ledger[/bold] — recorded {len(written)} open gap(s)"
+            )
+            refresh_profile_hints(self.project_root, self.session_dir)
+
+    def seed_from_ledger(self) -> list[Task]:
+        """After decompose, plant at most 2 kind=gap tasks from OPEN ledger rows."""
+        self.record_gaps()
+        planted = seed_open_gaps(self.board, self.project_root)
+        if planted:
+            self.console.print(
+                f"[bold]Gap seed[/bold] — planted {len(planted)} kind=gap task(s)"
+            )
+            self.console.print(self.render_board_table())
+            refresh_profile_hints(self.project_root, self.session_dir)
+        return planted
 
     async def follow_up(self) -> bool:
         """One bounded round of research on rejected/unchecked evidence."""

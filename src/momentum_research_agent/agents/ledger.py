@@ -160,6 +160,7 @@ def build_gaps(
                 kind=GapKind.ENGINE_MOCK,
                 claim=f"engine_query({ticker}) returned labeled mock data.",
                 notes="Replay uses the stored observation; no live snapshot was attached.",
+                evidence_id=f"engine_mock:{ticker}",
                 task_id=trace.agent_id,
                 trace_ids=[trace.id],
             )

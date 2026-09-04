@@ -210,6 +210,18 @@ class GapKind(str, Enum):
     ENGINE_MOCK = "engine_mock"
 
 
+class MomentumCapability(str, Enum):
+    CROWDING = "crowding"
+    UNWIND_CRASH = "unwind_crash"
+    ENGINE_FRESHNESS = "engine_freshness"
+    SOURCE_QUALITY = "source_quality"
+
+
+class GapLedgerStatus(str, Enum):
+    OPEN = "OPEN"
+    CONSUMED = "CONSUMED"
+
+
 class ReplayHint(BaseModel):
     """How to replay a stored engine/search observation."""
 
@@ -248,6 +260,21 @@ class GapEntry(BaseModel):
     trace_ids: list[str] = Field(default_factory=list)
 
 
+class GapLedgerRow(BaseModel):
+    """One line in the cross-session `reports/gap_ledger.jsonl` book."""
+
+    evidence_id: str
+    capability: MomentumCapability
+    status: GapLedgerStatus = GapLedgerStatus.OPEN
+    gap_kind: GapKind
+    claim: str
+    notes: str = ""
+    source_session_id: str | None = None
+    consumed_session_id: str | None = None
+    consumed_task_id: str | None = None
+    created_at: datetime = Field(default_factory=utcnow)
+
+
 class EvidenceVerdict(BaseModel):
     evidence_id: str
     task_id: str | None = None
@@ -276,36 +303,6 @@ class VerificationRunResult(BaseModel):
     usage: UsageSummary = Field(default_factory=UsageSummary)
     tool_calls: int = 0
     traces: list[ToolTrace] = Field(default_factory=list)
-
-
-class GapCapability(str, Enum):
-    CROWDING = "crowding"
-    UNWIND_CRASH = "unwind_crash"
-    ENGINE_FRESHNESS = "engine_freshness"
-    SOURCE_QUALITY = "source_quality"
-    OTHER = "other"
-
-
-class GapState(str, Enum):
-    OPEN = "open"
-    CONSUMED = "consumed"
-
-
-class GapRecord(BaseModel):
-    """One rejected/unchecked claim in the cross-session momentum gap ledger."""
-
-    evidence_id: str
-    claim: str
-    status: VerificationStatus
-    capability: GapCapability = GapCapability.OTHER
-    session_id: str
-    task_id: str | None = None
-    profile: str | None = None
-    notes: str = ""
-    issues: list[str] = Field(default_factory=list)
-    state: GapState = GapState.OPEN
-    consumed_by: str | None = None
-    created_at: datetime = Field(default_factory=utcnow)
 
 
 def extract_json_text(text: str) -> str:

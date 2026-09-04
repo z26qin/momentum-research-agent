@@ -10,12 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from momentum_research_agent.models.schemas import (
-    EvidenceVerdict,
-    VerificationReport,
-    VerificationStatus,
-)
-from momentum_research_agent.state.gap_ledger import append_from_verification, ledger_path
+from momentum_research_agent.coordinator.gap_seed import append_gaps
+from momentum_research_agent.models.schemas import GapEntry, GapKind
 from momentum_research_agent.tools.engine_adapter import (
     load_bundled_engine_state,
     normalize_engine_payload,
@@ -245,27 +241,17 @@ def _append_failures(project_root: Path, results: list[EvalResult]) -> int:
     failed = [item for item in results if not item.passed]
     if not failed:
         return 0
-    verdicts = [
-        EvidenceVerdict(
+    gaps = [
+        GapEntry(
             evidence_id=f"eval:{item.case_id}",
             claim=(
                 f"engine snapshot / V_D eval {item.case_id} failed: "
                 + "; ".join(item.reasons)
             ),
-            status=VerificationStatus.UNCHECKED,
+            kind=GapKind.UNCHECKED_EVIDENCE,
             notes="frozen engine/V_D eval",
-            issues=list(item.reasons),
         )
         for item in failed
     ]
-    written = append_from_verification(
-        ledger_path(project_root),
-        VerificationReport(
-            question="momentum eval",
-            overall_status="fail",
-            summary="frozen DM / crowding / unwind eval",
-            verdicts=verdicts,
-        ),
-        EVAL_SESSION_ID,
-    )
+    written = append_gaps(project_root, gaps, session_id=EVAL_SESSION_ID)
     return len(written)
