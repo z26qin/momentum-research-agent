@@ -24,7 +24,6 @@ from momentum_research_agent.models.schemas import (
 )
 from momentum_research_agent.state.reports import persist_verification_report
 from momentum_research_agent.state.traces import append_traces, load_traces
-from momentum_research_agent.state.trajectory import append_trajectory
 from momentum_research_agent.tools import authorize_tools
 from momentum_research_agent.tools.registry import (
     ToolContext,
@@ -138,14 +137,6 @@ class Verifier:
             )
             if event is not None:
                 traces.append(event)
-            append_trajectory(
-                session_dir,
-                tool=name,
-                arguments=arguments,
-                observation=result,
-                agent_id="verifier",
-                agent_role="verifier",
-            )
             if self.verbose and self.console is not None:
                 preview = result if len(result) < 240 else result[:240] + "…"
                 self.console.print(f"[dim]verifier · {name}({arguments}) → {preview}[/dim]")

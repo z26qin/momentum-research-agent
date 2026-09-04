@@ -105,10 +105,7 @@ class Coordinator:
         self.board.save()
         await self.decompose(question)
         self.seed_from_ledger()
-        self.warm_engine()
-        await self.dispatch_all()
-        if self.maybe_replan():
-            await self.dispatch_all()
+        await self._dispatch_wave()
         await self.verify()
         if await self.follow_up():
             await self.verify()
@@ -125,20 +122,13 @@ class Coordinator:
         if pending:
             if not already_gap_seeded(self.board.tasks):
                 self.seed_from_ledger()
-            self.warm_engine()
-            self.board.requeue_unfinished()
-            await self.dispatch_all()
+            await self._dispatch_wave(requeue=True)
             ran_dispatch = True
-            if self.maybe_replan():
-                await self.dispatch_all()
         elif not self.board.tasks:
             await self.decompose(self.board.question)
             self.seed_from_ledger()
-            self.warm_engine()
-            await self.dispatch_all()
+            await self._dispatch_wave()
             ran_dispatch = True
-            if self.maybe_replan():
-                await self.dispatch_all()
         self._load_existing_sub_reports()
         existing_verification = load_verification_report(self.session_dir)
         if ran_dispatch or existing_verification is None:
@@ -323,6 +313,15 @@ class Coordinator:
             )
             self.console.print(self.render_board_table())
         return planted
+
+    async def _dispatch_wave(self, *, requeue: bool = False) -> None:
+        """Warm engine, dispatch pending tasks, then at most one kind=replan."""
+        self.warm_engine()
+        if requeue:
+            self.board.requeue_unfinished()
+        await self.dispatch_all()
+        if self.maybe_replan():
+            await self.dispatch_all()
 
     def warm_engine(self) -> None:
         """Prefetch run_mvp for frozen as-of dates so ReAct stays inside the tool budget."""

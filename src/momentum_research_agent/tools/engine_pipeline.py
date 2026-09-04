@@ -41,24 +41,34 @@ def _has_monitor_entry(root: Path) -> bool:
     return (root / "scripts" / "run_monitor.py").is_file()
 
 
-def resolve_pipeline_root(project_root: Path | None = None) -> Path | None:
-    """Monitor checkout or vendored PIT pack. Missing MOMENTUM_ENGINE_DIR does not fall back."""
-    if pipeline_disabled():
-        return None
+def resolve_engine_root(project_root: Path | None = None) -> Path | None:
+    """Single engine root for pipeline and file-snapshot fallback.
+
+    `MOMENTUM_ENGINE_DIR` wins. If it is set but missing, do not fall back to
+    sibling, bundle, or local_dm. Otherwise sibling checkout, then vendored PIT.
+    """
     raw = os.environ.get("MOMENTUM_ENGINE_DIR", "").strip()
     if raw:
         path = Path(raw).expanduser()
-        if not path.is_dir():
-            return None
-        return path if _has_monitor_entry(path) else None
+        return path if path.is_dir() else None
     root = find_project_root(project_root)
     sibling = root.parent / "momentum-tail-risk-monitor"
-    if sibling.is_dir() and _has_monitor_entry(sibling):
+    if sibling.is_dir():
         return sibling
     bundled = bundled_engine_root(root)
-    if _has_monitor_entry(bundled):
+    if bundled.is_dir() and _has_monitor_entry(bundled):
         return bundled
     return None
+
+
+def resolve_pipeline_root(project_root: Path | None = None) -> Path | None:
+    """Live run_mvp root. Requires scripts/run_monitor.py. Honors MOMENTUM_DISABLE_PIPELINE."""
+    if pipeline_disabled():
+        return None
+    root = resolve_engine_root(project_root)
+    if root is None or not _has_monitor_entry(root):
+        return None
+    return root
 
 
 def pipeline_cache_path(root: Path, as_of: str) -> Path:

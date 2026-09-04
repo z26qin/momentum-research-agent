@@ -1,7 +1,8 @@
-"""Runtime prompt overlay from OPEN gaps and trajectory failure markers.
+"""Runtime prompt overlay from OPEN gaps and eval/trace failure markers.
 
 Does not import coordinator.gap_seed (circular). Committed profiles stay frozen.
-CLOSED ledger rows drop their rules.
+CLOSED ledger rows drop their rules. Reads traces.jsonl via extra_failures; does
+not write a second log.
 """
 
 from __future__ import annotations
@@ -59,7 +60,7 @@ def refresh_profile_hints(
     *,
     extra_failures: list[dict[str, Any]] | None = None,
 ) -> Path:
-    """Rewrite overlay from OPEN gaps plus optional eval/trajectory failure markers."""
+    """Rewrite overlay from OPEN gaps plus optional eval/trace failure markers."""
     rows = _load_ledger_rows(project_root)
     closed_ids = {
         str(row.get("evidence_id"))

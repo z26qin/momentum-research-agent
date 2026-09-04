@@ -6,7 +6,13 @@ from pathlib import Path
 import pytest
 
 from momentum_research_agent.config import find_project_root
-from momentum_research_agent.tools.engine_pipeline import WARM_TIMEOUT_S, run_pipeline
+from momentum_research_agent.tools.engine_adapter import resolve_engine_root as adapter_resolve
+from momentum_research_agent.tools.engine_pipeline import (
+    WARM_TIMEOUT_S,
+    resolve_engine_root,
+    resolve_pipeline_root,
+    run_pipeline,
+)
 from momentum_research_agent.tools.engine_query import engine_query
 from momentum_research_agent.tools.registry import ToolContext, set_tool_context
 
@@ -20,6 +26,28 @@ def live_engine(monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.delenv("MOMENTUM_ENGINE_SNAPSHOT", raising=False)
     set_tool_context(ToolContext(project_root=find_project_root(), session_dir=None))
     return ENGINE
+
+
+def test_adapter_and_pipeline_share_resolve_engine_root() -> None:
+    assert adapter_resolve is resolve_engine_root
+
+
+def test_missing_engine_dir_does_not_fall_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(tmp_path / "missing-engine"))
+    monkeypatch.delenv("MOMENTUM_DISABLE_PIPELINE", raising=False)
+    assert resolve_engine_root(find_project_root()) is None
+    assert resolve_pipeline_root(find_project_root()) is None
+
+
+def test_json_only_dir_is_root_but_not_pipeline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(tmp_path))
+    monkeypatch.delenv("MOMENTUM_DISABLE_PIPELINE", raising=False)
+    assert resolve_engine_root(tmp_path) == tmp_path
+    assert resolve_pipeline_root(tmp_path) is None
 
 
 def test_repo_does_not_import_monitor_package() -> None:

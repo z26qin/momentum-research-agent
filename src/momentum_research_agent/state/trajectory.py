@@ -1,49 +1,36 @@
-"""Append-only tool previews for prompt overlay (not the replay ledger)."""
+"""Derived tool previews from traces.jsonl. Do not write a second log.
+
+Overlay and replan read traces. This module is a truncated view for callers
+that still want a preview dict.
+"""
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from momentum_research_agent.state.traces import load_traces
 
-def trajectory_path(session_dir: Path) -> Path:
-    return Path(session_dir) / "trajectory.jsonl"
-
-
-def append_trajectory(
-    session_dir: Path,
-    *,
-    tool: str,
-    arguments: dict[str, Any],
-    observation: str,
-    agent_id: str | None = None,
-    agent_role: str | None = None,
-) -> Path:
-    path = trajectory_path(session_dir)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    preview = observation if len(observation) <= 500 else observation[:500] + "…"
-    row = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "tool": tool,
-        "arguments": arguments,
-        "preview": preview,
-        "agent_id": agent_id,
-        "agent_role": agent_role,
-    }
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
-    return path
+PREVIEW_CHARS = 500
 
 
 def load_trajectory(session_dir: Path) -> list[dict[str, Any]]:
-    path = trajectory_path(session_dir)
-    if not path.exists():
-        return []
     rows: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        rows.append(json.loads(line))
+    for trace in load_traces(session_dir):
+        observation = trace.observation
+        preview = (
+            observation
+            if len(observation) <= PREVIEW_CHARS
+            else observation[:PREVIEW_CHARS] + "…"
+        )
+        rows.append(
+            {
+                "timestamp": trace.timestamp.isoformat(),
+                "tool": trace.tool,
+                "arguments": dict(trace.arguments),
+                "preview": preview,
+                "agent_id": trace.agent_id,
+                "agent_role": trace.agent_role,
+            }
+        )
     return rows

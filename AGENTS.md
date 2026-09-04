@@ -52,7 +52,7 @@ Follow-up is one bounded extra dispatch (default max 2 tasks) using the original
 python scripts/run_monitor.py --as-of-date YYYY-MM-DD --output-json …
 ```
 
-Path: `require_cached_inputs()` → `run_compact_assessment()` → `run_mvp()` reading `data/processed/*.parquet`. This repo must not `from src.mvp import` or `import momentum_crash`. `MOMENTUM_ENGINE_DIR` / a sibling checkout wins when present; otherwise the vendored PIT pack at `fixtures/engine` (commit `99b0688`) is used. If `MOMENTUM_ENGINE_DIR` is set to a missing path, do not fall back to the bundle. File snapshots and `local_dm` cannot `delivery_contract.verdict=pass`. Only `pipeline_run=True` from live `run_mvp` can. Query timeout ~8s; Coordinator warm ~90s. `--eval` calls `engine_query(end="2026-05-29")` with no DeepSeek and writes failures as `eval:{case_id}` into the gap ledger plus `reports/prompt_evolution.json` / `profile_hints.md`. Committed `profiles/*.md` stay frozen; overlays are runtime-only.
+Path: `require_cached_inputs()` → `run_compact_assessment()` → `run_mvp()` reading `data/processed/*.parquet`. This repo must not `from src.mvp import` or `import momentum_crash`. One `resolve_engine_root`: `MOMENTUM_ENGINE_DIR` / a sibling checkout wins when present; otherwise the vendored PIT pack at `fixtures/engine` (commit `99b0688`). If `MOMENTUM_ENGINE_DIR` is set to a missing path, do not fall back to the bundle. File snapshots use that same root and cannot `delivery_contract.verdict=pass`. Only `pipeline_run=True` from live `run_mvp` can. Query timeout ~8s; Coordinator warm ~90s. `--eval` calls `engine_query(end="2026-05-29")` with no DeepSeek and writes failures as `eval:{case_id}` into the gap ledger plus `reports/prompt_evolution.json` / `profile_hints.md`. Committed `profiles/*.md` stay frozen; overlays are runtime-only. Replan and overlay read `traces.jsonl`; there is no second tool log.
 
 ## Artifacts
 
@@ -64,8 +64,7 @@ reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/
   task_board.json
   sub_reports/{task_id}_{profile}.json    # source of truth
   sub_reports/{task_id}_{profile}.md      # human rendering
-  traces.jsonl                       # append-only engine_query / web_search log
-  trajectory.jsonl                   # all-tool previews for overlay
+  traces.jsonl                       # source of truth: engine_query / web_search replay
   engine_runs/                       # optional session cache; pipeline cache lives on the engine root
   verification.json                  # per-session momentum gap ledger (gaps + replayable traces + verdicts)
   verification.md

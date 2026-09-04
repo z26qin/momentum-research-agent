@@ -61,7 +61,6 @@ Each run writes `reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/`, plus a cross-sessio
 | `reports/prompt_evolution.json` | Runtime overlay rules from OPEN gaps (not weight training) |
 | `reports/profile_hints.md` | Appended to frozen profiles at load time |
 | `task_board.json` | Full task history with timestamps |
-| `trajectory.jsonl` | All-tool previews used to refresh the overlay |
 | `sub_reports/{task_id}_{profile}.json` | Canonical `ResearchReport` (Evidence[]) |
 | `sub_reports/{task_id}_{profile}.md` | Human-readable rendering of the same report |
 | `traces.jsonl` | Append-only `engine_query` / `web_search` replay log |
