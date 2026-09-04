@@ -85,6 +85,39 @@ def test_save_load_round_trip(tmp_path: Path) -> None:
     assert restored.tool_calls == 3
     assert restored.tokens_used == 1200
     assert restored.created_at == first.created_at
+    assert restored.kind.value == "research"
+
+
+def test_followup_kind_round_trips(tmp_path: Path) -> None:
+    board = _board(tmp_path)
+    task = board.add_task(
+        "Follow-up: crowding",
+        "re-check",
+        "momentum_analyst",
+        kind="followup",
+    )
+    assert task.kind.value == "followup"
+    loaded = TaskBoard.load(board.session_dir)
+    assert loaded.get(task.id).kind.value == "followup"
+
+
+def test_legacy_task_board_defaults_kind_to_research(tmp_path: Path) -> None:
+    board = _board(tmp_path)
+    payload = board.to_payload()
+    payload["tasks"] = [
+        {
+            "id": "abcd1234",
+            "title": "Momentum",
+            "assignment": "x",
+            "profile": "momentum_analyst",
+            "status": "PENDING",
+        }
+    ]
+    from momentum_research_agent.state.persistence import save_json
+
+    save_json(board.path, payload)
+    loaded = TaskBoard.load(board.session_dir)
+    assert loaded.get("abcd1234").kind.value == "research"
 
 
 def test_requeue_unfinished(tmp_path: Path) -> None:

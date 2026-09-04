@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from momentum_research_agent.tools.engine_adapter import (
+    iter_engine_artifacts,
     load_engine_state,
     normalize_engine_payload,
     select_engine_artifact,
@@ -55,7 +56,11 @@ async def test_engine_query_falls_back_to_labeled_mock(
     assert payload["source"] == "mock"
     assert payload["ticker"] == "NVDA"
     assert "MOCK DATA" in payload["note"]
-    assert payload["risk_state"] in {"QUIET", "WATCH", "ELEVATED", "CRITICAL"}
+    assert payload["risk_state"] in {"normal", "bear_low_volatility", "panic_elevated"}
+    assert payload["regime"] in {"QUIET", "FRAGILITY_BUILDING", "UNWIND"}
+    assert payload["dm_bear_market_indicator"] == (
+        payload["risk_state"] in {"bear_low_volatility", "panic_elevated"}
+    )
 
 
 @pytest.mark.asyncio
@@ -118,3 +123,52 @@ def test_stale_as_of_is_flagged(tmp_path: Path) -> None:
     assert payload["as_of_match"] is False
     assert "AAPL" in payload["note"]
     assert payload["ticker_mentions"] == []
+
+
+def test_start_date_is_not_used_as_as_of(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_latest(tmp_path)
+    snap = tmp_path / "outputs" / "snapshot_2026-01-01" / "structured_snapshot.json"
+    snap.parent.mkdir(parents=True)
+    snap.write_text(
+        json.dumps(
+            {
+                "temporal_scope": {"analysis_as_of_date": "2026-01-01"},
+                "market_backdrop": {"dm_inspired_market_state": "panic_elevated"},
+                "mechanical_unwind": {"unwind_state": "UNWIND"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(tmp_path))
+    monkeypatch.delenv("MOMENTUM_ENGINE_SNAPSHOT", raising=False)
+    loaded = load_engine_state(
+        "SMH", start="2026-01-01", end=None, project_root=tmp_path
+    )
+    assert loaded is not None
+    assert loaded["as_of"] == "2026-05-29"
+    assert loaded["risk_state"] == "normal"
+    assert loaded["start"] == "2026-01-01"
+    assert loaded["as_of_match"] is True
+
+
+def test_quiet_control_examples_are_ignored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    quiet = tmp_path / "outputs" / "quiet_control_example_risk_output"
+    quiet.mkdir(parents=True)
+    quiet.joinpath("pm_risk_assessment_2024-01-05.json").write_text(
+        json.dumps(
+            {
+                "config": {"as_of_date": "2024-01-05"},
+                "overall_risk_state": "bear_low_volatility",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(tmp_path))
+    monkeypatch.delenv("MOMENTUM_ENGINE_SNAPSHOT", raising=False)
+    assert iter_engine_artifacts(tmp_path) == []
+    assert select_engine_artifact(tmp_path) is None
+    assert load_engine_state("NVDA", project_root=tmp_path) is None

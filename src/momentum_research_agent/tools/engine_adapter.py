@@ -14,7 +14,9 @@ from typing import Any
 
 from momentum_research_agent.config import find_project_root
 
+DM_PRIMARY_STATES = ("normal", "bear_low_volatility", "panic_elevated")
 DM_BEAR_STATES = frozenset({"bear_low_volatility", "panic_elevated"})
+MECHANICAL_UNWIND_REGIMES = ("QUIET", "FRAGILITY_BUILDING", "UNWIND")
 _EMPTY = (None, "", [], {})
 
 
@@ -55,9 +57,6 @@ def iter_engine_artifacts(root: Path) -> list[Path]:
     outputs = root / "outputs"
     if outputs.is_dir():
         found.extend(sorted(outputs.glob("snapshot_*/structured_snapshot.json"), reverse=True))
-    quiet = root / "outputs" / "quiet_control_example_risk_output"
-    if quiet.is_dir():
-        found.extend(sorted(quiet.glob("pm_risk_assessment_*.json"), reverse=True))
     return found
 
 
@@ -109,7 +108,7 @@ def load_engine_state(
     *,
     project_root: Path | None = None,
 ) -> dict[str, Any] | None:
-    as_of = end or start
+    as_of = end
     explicit = os.environ.get("MOMENTUM_ENGINE_SNAPSHOT", "").strip()
     if explicit:
         path = Path(explicit).expanduser()
@@ -139,8 +138,8 @@ def normalize_engine_payload(
     end: str | None = None,
 ) -> dict[str, Any]:
     symbol = ticker.upper()
-    as_of = artifact_as_of(path, payload) or end or start
-    requested = end or start
+    as_of = artifact_as_of(path, payload) or end
+    requested = end
     dm_state = _dm_state(payload)
     regime = _regime(payload)
     crash_freq = _crash_frequency(payload, dm_state)

@@ -11,6 +11,7 @@ from momentum_research_agent.models.schemas import (
     ALLOWED_TRANSITIONS,
     InvalidTransition,
     Task,
+    TaskKind,
     TaskStatus,
     utcnow,
 )
@@ -47,11 +48,13 @@ class TaskBoard:
         assignment: str,
         profile: str,
         task_id: str | None = None,
+        kind: TaskKind | str = TaskKind.RESEARCH,
     ) -> Task:
         kwargs: dict = {
             "title": title,
             "assignment": assignment,
             "profile": profile,
+            "kind": kind,
         }
         if task_id:
             kwargs["id"] = task_id

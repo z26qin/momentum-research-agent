@@ -330,6 +330,9 @@ async def test_follow_up_dispatches_once_for_unchecked_evidence(
     assert any(title.startswith("Follow-up:") for title in titles)
     assert len(titles) == 3
     assert verify_counts == [2, 3]
+    followup_tasks = [task for task in coordinator.board.tasks if task.kind.value == "followup"]
+    assert len(followup_tasks) == 1
+    assert followup_tasks[0].profile in {"momentum_analyst", "credit_analyst"}
     assert report.executive_summary.startswith("The tape looks like a rotation")
     assert "Follow-up reports below" in client.completions.calls[1]["messages"][-1]["content"]
     # second follow-up must not spawn

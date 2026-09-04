@@ -17,10 +17,10 @@ from momentum_research_agent.agents.sub_agent import SubAgent
 from momentum_research_agent.agents.verifier import Verifier
 from momentum_research_agent.config import coordinator_model, sub_agent_model, usage_cost_usd
 from momentum_research_agent.coordinator.followup import (
-    FOLLOWUP_TITLE_PREFIX,
     MAX_FOLLOWUP_TASKS,
     already_followed_up,
     followup_specs,
+    is_followup_task,
 )
 from momentum_research_agent.coordinator.task_board import TaskBoard
 from momentum_research_agent.models.schemas import (
@@ -29,6 +29,7 @@ from momentum_research_agent.models.schemas import (
     ResearchReport,
     SynthesisReport,
     Task,
+    TaskKind,
     TaskStatus,
     UsageSummary,
     VerificationReport,
@@ -270,7 +271,12 @@ class Coordinator:
             f"[bold]Follow-up[/bold] — {len(specs)} task(s) on rejected/unchecked evidence"
         )
         for spec in specs:
-            self.board.add_task(spec.title, spec.assignment, spec.profile)
+            self.board.add_task(
+                spec.title,
+                spec.assignment,
+                spec.profile,
+                kind=TaskKind.FOLLOWUP,
+            )
         await self.dispatch_all()
         return True
 
@@ -299,9 +305,7 @@ class Coordinator:
                 f"Verification JSON:\n{self.verification.model_dump_json(indent=2)}\n\n"
                 "Weight rejected/unchecked evidence down. Do not treat unverified claims as facts."
             )
-        followups = [
-            task for task in completed if task.title.startswith(FOLLOWUP_TITLE_PREFIX)
-        ]
+        followups = [task for task in completed if is_followup_task(task)]
         if followups:
             chunks.append(
                 "Follow-up reports below were spawned only for rejected/unchecked "
@@ -464,8 +468,7 @@ class Coordinator:
         followup_ids = {
             task.id
             for task in self.board.tasks
-            if task.title.startswith(FOLLOWUP_TITLE_PREFIX)
-            and task.status == TaskStatus.COMPLETED
+            if is_followup_task(task) and task.status == TaskStatus.COMPLETED
         }
         if not followup_ids:
             return False

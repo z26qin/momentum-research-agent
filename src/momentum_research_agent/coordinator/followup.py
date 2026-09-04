@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from momentum_research_agent.models.schemas import (
     ResearchReport,
     Task,
+    TaskKind,
     VerificationReport,
     VerificationStatus,
 )
@@ -23,6 +24,11 @@ FOLLOWUP_STATUSES = frozenset(
 DEFAULT_FOLLOWUP_PROFILE = "momentum_analyst"
 MAX_FOLLOWUP_TASKS = 2
 
+_STATUS_RANK = {
+    VerificationStatus.REJECTED: 0,
+    VerificationStatus.UNCHECKED: 1,
+}
+
 
 @dataclass(frozen=True)
 class FollowUpSpec:
@@ -31,10 +37,21 @@ class FollowUpSpec:
     profile: str
     original_task_id: str | None
     evidence_ids: tuple[str, ...]
+    kind: TaskKind = TaskKind.FOLLOWUP
+
+
+def is_followup_task(task: Task) -> bool:
+    return task.kind is TaskKind.FOLLOWUP
 
 
 def already_followed_up(tasks: list[Task]) -> bool:
-    return any(task.title.startswith(FOLLOWUP_TITLE_PREFIX) for task in tasks)
+    return any(is_followup_task(task) for task in tasks)
+
+
+def _group_priority(verdicts: list) -> tuple[int, int]:
+    worst = min((_STATUS_RANK[item.status] for item in verdicts), default=99)
+    rejected = sum(1 for item in verdicts if item.status is VerificationStatus.REJECTED)
+    return (worst, -rejected)
 
 
 def followup_specs(
@@ -53,8 +70,10 @@ def followup_specs(
     if not grouped or max_tasks <= 0:
         return []
 
+    ranked = sorted(grouped.items(), key=lambda item: _group_priority(item[1]))
     specs: list[FollowUpSpec] = []
-    for original_id, verdicts in list(grouped.items())[:max_tasks]:
+    for original_id, verdicts in ranked[:max_tasks]:
+        verdicts = sorted(verdicts, key=lambda item: _STATUS_RANK[item.status])
         report = reports.get(original_id)
         profile = (
             report.agent_role.removesuffix(".md")

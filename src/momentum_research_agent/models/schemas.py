@@ -36,6 +36,11 @@ class TaskStatus(str, Enum):
     CANCELLED = "CANCELLED"
 
 
+class TaskKind(str, Enum):
+    RESEARCH = "research"
+    FOLLOWUP = "followup"
+
+
 class InvalidTransition(ValueError):
     """Raised when a TaskBoard status change is not allowed."""
 
@@ -63,6 +68,7 @@ class Task(BaseModel):
     tool_calls: int = 0
     tokens_used: int = 0
     error_type: Optional[str] = None
+    kind: TaskKind = TaskKind.RESEARCH
 
 
 class TaskSpec(BaseModel):

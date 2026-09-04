@@ -12,6 +12,7 @@ from momentum_research_agent.models.schemas import (
     EvidenceVerdict,
     ResearchReport,
     Task,
+    TaskKind,
     VerificationReport,
     VerificationStatus,
 )
@@ -106,15 +107,75 @@ def test_followup_caps_at_two_original_tasks() -> None:
     )
     specs = followup_specs("q", verification, reports, max_tasks=2)
     assert len(specs) == 2
-    assert {spec.original_task_id for spec in specs} == {"a", "b"}
+    assert {spec.original_task_id for spec in specs} == {"a", "c"}
 
 
-def test_already_followed_up_detects_prefix() -> None:
+def test_followup_prefers_rejected_over_unchecked() -> None:
+    reports = {
+        "a": _report("a", "momentum_analyst", "A"),
+        "b": _report("b", "credit_analyst", "B"),
+        "c": _report("c", "macro_analyst", "C"),
+    }
+    verification = VerificationReport(
+        question="q",
+        overall_status="fail",
+        summary="rejected is last in insertion order",
+        verdicts=[
+            EvidenceVerdict(
+                evidence_id="1",
+                task_id="a",
+                claim="A",
+                status=VerificationStatus.UNCHECKED,
+            ),
+            EvidenceVerdict(
+                evidence_id="2",
+                task_id="b",
+                claim="B",
+                status=VerificationStatus.UNCHECKED,
+            ),
+            EvidenceVerdict(
+                evidence_id="3",
+                task_id="c",
+                claim="C is fabricated",
+                status=VerificationStatus.REJECTED,
+            ),
+        ],
+    )
+    specs = followup_specs("q", verification, reports, max_tasks=2)
+    assert [spec.original_task_id for spec in specs] == ["c", "a"]
+    assert specs[0].evidence_ids == ("3",)
+
+
+def test_already_followed_up_uses_kind_not_title() -> None:
     assert already_followed_up([]) is False
-    assert already_followed_up([Task(title="Momentum state", assignment="x", profile="momentum_analyst")]) is False
     assert (
         already_followed_up(
-            [Task(title="Follow-up: Crowding is critical", assignment="x", profile="momentum_analyst")]
+            [Task(title="Momentum state", assignment="x", profile="momentum_analyst")]
+        )
+        is False
+    )
+    assert (
+        already_followed_up(
+            [
+                Task(
+                    title="Follow-up: Crowding is critical",
+                    assignment="x",
+                    profile="momentum_analyst",
+                )
+            ]
+        )
+        is False
+    )
+    assert (
+        already_followed_up(
+            [
+                Task(
+                    title="Repair crowding",
+                    assignment="x",
+                    profile="momentum_analyst",
+                    kind=TaskKind.FOLLOWUP,
+                )
+            ]
         )
         is True
     )
