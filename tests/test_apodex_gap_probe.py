@@ -50,13 +50,15 @@ def test_head_still_has_task_board_scaffold() -> None:
     summary = probe.summarize(probe.probe("HEAD"))
     assert "disk_task_board" in summary["coordination_scaling"]["present"]
     assert "unit_tests" in summary["eval_attribution"]["present"]
-    # #6+#7 landed seed_open_gaps on main. PR CI merges this branch into
-    # origin/main, so HEAD already has that product signal.
+    # #6+#7 landed seed_open_gaps; #9+#10 landed V_D + overlay on main.
+    # PR CI merges this branch into origin/main, so HEAD has those signals.
     assert "gap_seed" in summary["task_pipeline"]["present"]
-    # prompt_evolution / V_D / live_replan are still absent on main.
-    assert "prompt_evolution" in summary["training_loop"]["missing"]
-    assert "delivery_verifier" in summary["environment_scaling"]["missing"]
+    assert "prompt_evolution" in summary["training_loop"]["present"]
+    assert "delivery_verifier" in summary["environment_scaling"]["present"]
+    # should_replan / maybe_replan still do not count as live_replan.
     assert "live_replan" in summary["coordination_scaling"]["missing"]
+    assert "new_environment_factory" in summary["task_pipeline"]["missing"]
+    assert "working_capability_bench" in summary["eval_attribution"]["missing"]
 
 
 def test_live_replan_ignores_out_of_scope_prose() -> None:
