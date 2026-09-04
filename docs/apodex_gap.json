@@ -171,7 +171,7 @@
       "title": "Tighten engine adapter and one-round follow-up",
       "head_sha": "5212820ccb54293d7c585ce13b3c4e2a49a1dce2",
       "state": "draft",
-      "scored_at": "2026-09-04T14:15:00Z",
+      "scored_at": "2026-09-04T14:20:00Z",
       "predicted_overall": 22,
       "predicted_band": "verified_runtime",
       "predicted_scores": {
@@ -183,7 +183,16 @@
         "training_loop": 0,
         "eval_attribution": 18
       },
-      "note": "Independent Verifier + one-round follow-up + snapshot engine adapter. Largest move is asymmetric verification. Still not a self-improvement loop: no gap corpus, no Task Pipeline of new environments, no trajectory learning. Do not change official scores until this lands on main."
+      "confirmed": {
+        "head_sha_unchanged": true,
+        "has_verify_and_follow_up": true,
+        "writes_verification_json": true,
+        "has_loop_budget": true,
+        "has_statement_review": false,
+        "logs_action_observation_trace": false,
+        "react_trajectory_mention": "prompt prose in sub_agent.py only, not a replay log"
+      },
+      "note": "Second pass on 5212820: Coordinator.verify/follow_up exist; session writes verification.json. LoopBudget is turn/timeout caps, not Apodex Max Team Effort. No Statement Review, no action-observation trace. Training loop stays 0. Official scores unchanged until merge."
     }
   ],
   "explicitly_not_this_repo": [

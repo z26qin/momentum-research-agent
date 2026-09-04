@@ -132,6 +132,8 @@ decompose → dispatch → independent Verifier（static audit + 有界 ReAct）
 
 `live_replan` 必须匹配 `class AgentBus` / `async def replan` / `def staged_return`。文档里写「AgentBus is out of scope」不算命中。
 
+PR #2 二次核对（head 仍为 `5212820`）：`Coordinator.verify` / `follow_up` 存在，session 会写 `verification.json`。`LoopBudget` 只是轮次/超时上限。sub_agent 里的 “ReAct trajectory” 是提示词，不是 action/observation 日志。无 Statement Review。轨迹学习预估维持 0。
+
 ## 历史
 
 | 日期 | SHA | 综合分 | 笔记 |
@@ -140,3 +142,4 @@ decompose → dispatch → independent Verifier（static audit + 有界 ReAct）
 | 2026-09-04 | `ef03fa5`（main 未变） | 8 | 预评草稿 PR #2：合入后综合分约 22。正式分不改，直到该 diff 进入 `main`。 |
 | 2026-09-04 | `ef03fa5`（main 未变） | 8 | 增加 `scripts/probe_apodex_gap.py`。main 命中 5/21 信号；PR #2 命中 14/21。轨迹学习两边都是 0。 |
 | 2026-09-04 | `ef03fa5`（main 未变） | 8 | 探针加回归测试与 main/PR CI。`live_replan` 不再把「AgentBus out of scope」算命中。 |
+| 2026-09-04 | `ef03fa5`（main 未变） | 8 | 复核 PR #2 `5212820`：有 `verify`/`follow_up` 和 `verification.json`；无 Statement Review、无可回放轨迹。预估 22 维持。 |
