@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Sequence
 
@@ -31,6 +32,8 @@ TRADING_MONTH = 21
 TRADING_6M = 126
 TRADING_12M = 252
 TRADING_24M = 504
+
+_CLOSE_CACHE: dict[tuple[str, str | None], list[tuple[str, float]]] = {}
 
 
 def local_dm_disabled() -> bool:
@@ -110,16 +113,28 @@ def score_local_dm(
 ) -> dict[str, Any] | None:
     if local_dm_disabled():
         return None
-    ticker_px = fetch_closes(ticker, end=end)
+    symbol = ticker.upper()
+    if symbol == MARKET_TICKER:
+        ticker_px = fetch_closes(symbol, end=end)
+        market_px = ticker_px
+    else:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            ticker_fut = pool.submit(fetch_closes, symbol, end=end)
+            market_fut = pool.submit(fetch_closes, MARKET_TICKER, end=end)
+            ticker_px = ticker_fut.result()
+            market_px = market_fut.result()
     if ticker_px is None:
         return None
-    market_px = fetch_closes(MARKET_TICKER, end=end) or ticker_px
     return score_from_closes(
-        ticker, ticker_px, market_px, start=start, end=end
+        symbol, ticker_px, market_px or ticker_px, start=start, end=end
     )
 
 
 def fetch_closes(ticker: str, *, end: str | None = None) -> list[tuple[str, float]] | None:
+    key = (ticker.upper(), end)
+    cached = _CLOSE_CACHE.get(key)
+    if cached is not None:
+        return cached
     try:
         import yfinance as yf
     except ImportError:
@@ -152,7 +167,10 @@ def fetch_closes(ticker: str, *, end: str | None = None) -> list[tuple[str, floa
             continue
         day = str(index)[:10]
         rows.append((day, price))
-    return rows or None
+    if not rows:
+        return None
+    _CLOSE_CACHE[key] = rows
+    return rows
 
 
 def _minus_years(end: str, years: int) -> str:

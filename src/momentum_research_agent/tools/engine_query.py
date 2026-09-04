@@ -7,6 +7,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+import asyncio
+
 from momentum_research_agent.tools.engine_adapter import (
     DM_BEAR_STATES,
     DM_PRIMARY_STATES,
@@ -87,7 +89,7 @@ async def engine_query(ticker: str, start: str | None = None, end: str | None = 
     live = load_engine_state(ticker, start, end, project_root=_project_root())
     payload = live
     if payload is None:
-        payload = score_local_dm(ticker, start, end)
+        payload = await asyncio.to_thread(score_local_dm, ticker, start, end)
     if payload is None:
         payload = _mock_state(
             ticker,

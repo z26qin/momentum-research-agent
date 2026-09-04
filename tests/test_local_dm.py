@@ -50,3 +50,40 @@ def test_high_vol_crash_is_panic_unwind() -> None:
     assert payload["regime"] == "UNWIND"
     assert payload["ticker_1m_return"] < -0.10
     assert 0.0 <= payload["crowding_score"] <= 1.0
+
+
+def test_fetch_closes_caches(monkeypatch) -> None:
+    import sys
+    from types import SimpleNamespace
+
+    from momentum_research_agent.tools import local_dm
+
+    class _Cols(list):
+        nlevels = 1
+
+    class FakeFrame:
+        empty = False
+        columns = _Cols(["Close"])
+
+        def __init__(self) -> None:
+            self._rows = [(f"2024-01-{i:02d}", 100.0 + i) for i in range(2, 28)]
+
+        def __getitem__(self, _name: str):
+            return self
+
+        def items(self):
+            return iter(self._rows)
+
+    local_dm._CLOSE_CACHE.clear()
+    calls = {"n": 0}
+
+    def fake_download(ticker, **kwargs):
+        calls["n"] += 1
+        return FakeFrame()
+
+    monkeypatch.setitem(sys.modules, "yfinance", SimpleNamespace(download=fake_download))
+    first = local_dm.fetch_closes("NVDA", end="2024-04-22")
+    second = local_dm.fetch_closes("NVDA", end="2024-04-22")
+    assert first is not None and len(first) == 26
+    assert second == first
+    assert calls["n"] == 1
