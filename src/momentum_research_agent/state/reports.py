@@ -134,7 +134,7 @@ def render_verification_markdown(report: VerificationReport) -> str:
         for item in report.traces
     ) or "- (none)"
     return (
-        f"# Verification\n\n"
+        f"# Momentum gap ledger\n\n"
         f"**Question:** {report.question}\n\n"
         f"**Overall:** {report.overall_status}\n\n"
         f"**Timestamp:** {report.timestamp.isoformat()}\n\n"

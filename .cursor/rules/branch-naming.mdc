@@ -1,0 +1,11 @@
+---
+description: Use aaron/ branch prefixes, never cursor/
+alwaysApply: true
+---
+
+# Branch naming
+
+- New branches: `aaron/<short-name>` (example: `aaron/momentum-gap-ledger`).
+- Do **not** use `cursor/` prefixes. Review agents treat `cursor/` as Cursor-cloud agent branches and invent the wrong owner, run, or review context.
+- Do not commit or push directly to `main`. Open a PR from `aaron/...`, then merge.
+- If a `cursor/` branch already exists for the same work, rename it to `aaron/` before opening or updating the PR.
