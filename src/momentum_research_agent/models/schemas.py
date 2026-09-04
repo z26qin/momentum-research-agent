@@ -43,6 +43,7 @@ class TaskStatus(str, Enum):
 class TaskKind(str, Enum):
     RESEARCH = "research"
     FOLLOWUP = "followup"
+    GAP = "gap"
 
 
 class InvalidTransition(ValueError):
@@ -208,6 +209,18 @@ class GapKind(str, Enum):
     ENGINE_MOCK = "engine_mock"
 
 
+class MomentumCapability(str, Enum):
+    CROWDING = "crowding"
+    UNWIND_CRASH = "unwind_crash"
+    ENGINE_FRESHNESS = "engine_freshness"
+    SOURCE_QUALITY = "source_quality"
+
+
+class GapLedgerStatus(str, Enum):
+    OPEN = "OPEN"
+    CONSUMED = "CONSUMED"
+
+
 class ReplayHint(BaseModel):
     """How to replay a stored engine/search observation."""
 
@@ -234,7 +247,7 @@ class ToolTrace(BaseModel):
 
 
 class GapEntry(BaseModel):
-    """One row in the momentum gap ledger."""
+    """One row in the per-session momentum gap ledger."""
 
     id: str = Field(default_factory=new_evidence_id)
     kind: GapKind
@@ -244,6 +257,21 @@ class GapEntry(BaseModel):
     task_id: str | None = None
     status: VerificationStatus | None = None
     trace_ids: list[str] = Field(default_factory=list)
+
+
+class GapLedgerRow(BaseModel):
+    """One line in the cross-session `reports/gap_ledger.jsonl` book."""
+
+    evidence_id: str
+    capability: MomentumCapability
+    status: GapLedgerStatus = GapLedgerStatus.OPEN
+    gap_kind: GapKind
+    claim: str
+    notes: str = ""
+    source_session_id: str | None = None
+    consumed_session_id: str | None = None
+    consumed_task_id: str | None = None
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class EvidenceVerdict(BaseModel):
