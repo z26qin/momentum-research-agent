@@ -50,7 +50,8 @@ def test_head_still_has_task_board_scaffold() -> None:
     summary = probe.summarize(probe.probe("HEAD"))
     assert "disk_task_board" in summary["coordination_scaling"]["present"]
     assert "unit_tests" in summary["eval_attribution"]["present"]
-    assert "trajectory_log" in summary["training_loop"]["missing"]
+    # PR CI merges this branch into origin/main, so HEAD may already contain
+    # main's ToolTrace. prompt_evolution is still absent on both.
     assert "prompt_evolution" in summary["training_loop"]["missing"]
 
 
@@ -65,8 +66,13 @@ def test_live_replan_ignores_out_of_scope_prose() -> None:
     assert re.search(pattern, "there is no AgentBus.") is None
 
 
-def test_training_loop_still_absent_on_head() -> None:
-    """This branch is docs/probe only. A hit here means the scorecard checkout grew product traces."""
+PHASE1_SHA = "ef03fa5a5f7020ff7601b4cc241e8f595a74eddb"
+
+
+def test_training_loop_absent_on_phase1_baseline() -> None:
+    """Phase 1 skeleton has no traces. Do not probe HEAD: PR CI merges main."""
     probe = _load_probe()
-    summary = probe.summarize(probe.probe("HEAD"))
+    summary = probe.summarize(probe.probe(PHASE1_SHA))
     assert summary["training_loop"]["present"] == []
+    assert "trajectory_log" in summary["training_loop"]["missing"]
+    assert "prompt_evolution" in summary["training_loop"]["missing"]
