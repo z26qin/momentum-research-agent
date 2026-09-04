@@ -6,9 +6,12 @@ from pathlib import Path
 import pytest
 
 from momentum_research_agent.tools.engine_adapter import (
+    bundled_engine_root,
     iter_engine_artifacts,
+    load_bundled_engine_state,
     load_engine_state,
     normalize_engine_payload,
+    resolve_engine_root,
     select_engine_artifact,
 )
 from momentum_research_agent.tools.engine_query import engine_query
@@ -119,6 +122,43 @@ async def test_engine_query_reads_latest_assessment(
     assert payload["as_of_match"] is True
     assert payload["delivery_contract"]["verdict"] in {"pass", "pass_with_caveats"}
     assert payload["delivery_contract"]["contract"] == "V_D"
+
+
+def test_resolve_falls_back_to_bundled_fixtures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("MOMENTUM_ENGINE_DIR", raising=False)
+    monkeypatch.delenv("MOMENTUM_ENGINE_SNAPSHOT", raising=False)
+    root = resolve_engine_root(tmp_path)
+    bundled = bundled_engine_root()
+    assert bundled is not None
+    assert root == bundled
+    loaded = load_bundled_engine_state("NVDA", end="2026-05-29")
+    assert loaded is not None
+    assert loaded["source"] == "momentum-tail-risk-monitor"
+    assert loaded["risk_state"] == "normal"
+    assert loaded["regime"] == "FRAGILITY_BUILDING"
+    assert loaded["as_of"] == "2026-05-29"
+    assert loaded["as_of_match"] is True
+    assert loaded["pipeline_run"] is False
+    assert loaded["crowding_score"] is not None
+
+
+@pytest.mark.asyncio
+async def test_engine_query_uses_bundled_frozen_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("MOMENTUM_ENGINE_DIR", raising=False)
+    monkeypatch.delenv("MOMENTUM_ENGINE_SNAPSHOT", raising=False)
+    monkeypatch.setenv("MOMENTUM_DISABLE_PIPELINE", "1")
+    monkeypatch.setenv("MOMENTUM_DISABLE_LOCAL_DM", "1")
+    raw = await engine_query("NVDA", end="2026-05-29")
+    payload = json.loads(raw)
+    assert payload["source"] == "momentum-tail-risk-monitor"
+    assert payload["as_of"] == "2026-05-29"
+    assert payload["risk_state"] == "normal"
+    assert payload["regime"] == "FRAGILITY_BUILDING"
+    assert payload["delivery_contract"]["verdict"] == "pass_with_caveats"
 
 
 def test_select_prefers_matching_snapshot(

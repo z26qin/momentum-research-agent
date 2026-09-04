@@ -1,4 +1,4 @@
-"""Coordinator: decompose → dispatch → verify → follow-up → synthesize."""
+"""Coordinator: warm engine → decompose → dispatch → verify → follow-up → synthesize."""
 
 from __future__ import annotations
 
@@ -57,6 +57,8 @@ from momentum_research_agent.state.reports import (
     render_verification_markdown,
 )
 from momentum_research_agent.tools import RESEARCH_PROFILES
+from momentum_research_agent.tools.engine_pipeline import warm_monitor
+from momentum_research_agent.tools.registry import ToolContext, set_tool_context
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 
@@ -100,6 +102,7 @@ class Coordinator:
     async def run(self, question: str) -> SynthesisReport:
         self.board.question = question
         self.board.save()
+        await self.warm_engine()
         await self.decompose(question)
         self.seed_from_ledger()
         await self.dispatch_all()
@@ -121,12 +124,14 @@ class Coordinator:
         ran_dispatch = False
         if pending:
             self.board.requeue_unfinished()
+            await self.warm_engine()
             await self.dispatch_all()
             await self.replan_blocked()
             ran_dispatch = True
         elif not self.board.tasks:
             await self.decompose(self.board.question)
             self.seed_from_ledger()
+            await self.warm_engine()
             await self.dispatch_all()
             await self.replan_blocked()
             ran_dispatch = True
@@ -177,6 +182,30 @@ class Coordinator:
         self.console.print(f"[bold]Decomposition[/bold] — {result.reasoning}\n")
         self.console.print(self.render_board_table())
         return created
+
+    async def warm_engine(self) -> dict | None:
+        """Prefetch a live PIT assessment before ReAct's 10s tool budget."""
+        set_tool_context(
+            ToolContext(
+                project_root=self.project_root,
+                session_dir=self.session_dir,
+                console=self.console,
+            )
+        )
+        payload = await asyncio.to_thread(
+            warm_monitor,
+            "SPY",
+            None,
+            None,
+            project_root=self.project_root,
+        )
+        if payload is not None:
+            as_of = payload.get("as_of") or "unknown"
+            self.console.print(
+                f"[bold]Engine warm[/bold] — live pipeline as_of={as_of} "
+                "cached for engine_query"
+            )
+        return payload
 
     def seed_from_ledger(self) -> list[Task]:
         remaining = max(0, self.max_sub_agents - len(self.board.pending))

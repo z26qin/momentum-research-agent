@@ -16,7 +16,10 @@ from momentum_research_agent.tools.engine_adapter import (
     load_engine_state,
 )
 from momentum_research_agent.tools.engine_contract import attach_delivery_contract
-from momentum_research_agent.tools.engine_pipeline import run_monitor_assessment
+from momentum_research_agent.tools.engine_pipeline import (
+    peek_cached_assessment,
+    run_monitor_assessment,
+)
 from momentum_research_agent.tools.local_dm import score_local_dm
 from momentum_research_agent.tools.registry import get_tool_context, register_tool
 
@@ -60,13 +63,14 @@ def _project_root() -> Path | None:
     description=(
         "Query the deterministic momentum tail-risk engine for Daniel–Moskowitz "
         "risk state (normal | bear_low_volatility | panic_elevated), mechanical "
-        "unwind regime, and crowding overlays. Prefers a live PIT run of "
+        "unwind regime, and crowding overlays. Prefers a warmed live PIT run of "
         "momentum-tail-risk-monitor (`scripts/run_monitor.py` via MOMENTUM_ENGINE_DIR "
-        "or a sibling checkout) when the snapshot as_of does not match. Matching "
-        "JSON snapshots are used as a fast path. If neither exists, runs a local "
-        "Daniel–Moskowitz scorer on SPY + ticker closes (24m bear market + 6m vol "
-        "→ risk_state; 1m drawdown → unwind). Each payload includes delivery_contract "
-        "V_D (pass | pass_with_caveats | fail). Labeled mock only if snapshot, "
+        "or a sibling checkout) when Coordinator.warm_engine cached it. Matching "
+        "JSON snapshots (including fixtures/engine frozen 2026-05-29 / 2026-06-30) "
+        "are the fast path. If neither exists, runs a local Daniel–Moskowitz "
+        "scorer on SPY + ticker closes (24m bear market + 6m vol → risk_state; "
+        "1m drawdown → unwind). Each payload includes delivery_contract V_D "
+        "(pass | pass_with_caveats | fail). Labeled mock only if snapshot, "
         "pipeline, and local scorer are all unavailable."
     ),
     parameters={
@@ -89,15 +93,19 @@ def _project_root() -> Path | None:
     },
 )
 async def engine_query(ticker: str, start: str | None = None, end: str | None = None) -> str:
-    live = load_engine_state(ticker, start, end, project_root=_project_root())
-    payload = live if live is not None and live.get("as_of_match", True) else None
+    root = _project_root()
+    payload = peek_cached_assessment(ticker, start, end, project_root=root)
+    live = None
+    if payload is None:
+        live = load_engine_state(ticker, start, end, project_root=root)
+        payload = live if live is not None and live.get("as_of_match", True) else None
     if payload is None:
         payload = await asyncio.to_thread(
             run_monitor_assessment,
             ticker,
             start,
             end,
-            project_root=_project_root(),
+            project_root=root,
         )
     if payload is None and live is not None:
         payload = live

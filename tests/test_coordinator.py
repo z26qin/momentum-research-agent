@@ -464,6 +464,40 @@ async def test_replan_retries_blocked_task(
 
 
 @pytest.mark.asyncio
+async def test_run_warms_engine_before_dispatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple] = []
+
+    def fake_warm(ticker="SPY", start=None, end=None, *, project_root=None, timeout_s=None):
+        calls.append((ticker, project_root))
+        return {"as_of": "2026-05-29", "pipeline_run": True, "source": "momentum-tail-risk-monitor"}
+
+    monkeypatch.setattr(
+        "momentum_research_agent.coordinator.coordinator.warm_monitor",
+        fake_warm,
+    )
+    session_dir = tmp_path / "session"
+    client = FakeClient([DECOMPOSE, SYNTHESIS])
+    coordinator = Coordinator(
+        session_dir=session_dir,
+        client=client,  # type: ignore[arg-type]
+        question="Is the NVDA selloff a crash?",
+        project_root=tmp_path,
+        usage_tracker=UsageSummary(),
+    )
+
+    async def fake_run(self, task, tools, session_dir):
+        result = _run_result(task, 10, 5)
+        persist_research_report(session_dir, task, result.report)
+        return result
+
+    _patch_runtime(monkeypatch, fake_run)
+    await coordinator.run("Is the NVDA selloff a crash?")
+    assert calls == [("SPY", tmp_path)]
+
+
+@pytest.mark.asyncio
 async def test_replan_retries_mock_engine_trajectory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

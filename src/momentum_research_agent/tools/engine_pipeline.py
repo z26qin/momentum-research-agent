@@ -43,6 +43,14 @@ def pipeline_timeout_s() -> float:
         return 8.0
 
 
+def warm_timeout_s() -> float:
+    raw = os.environ.get("MOMENTUM_ENGINE_WARM_TIMEOUT", "90")
+    try:
+        return max(pipeline_timeout_s(), float(raw))
+    except ValueError:
+        return 90.0
+
+
 def monitor_script(root: Path | None) -> Path | None:
     if root is None or not root.is_dir():
         return None
@@ -57,10 +65,22 @@ def _as_of_day(end: str | None) -> str:
 
 
 def _output_path(as_of: str) -> Path:
+    session_path = _session_output_path(as_of)
+    if session_path is not None:
+        return session_path
+    folder = Path(os.environ.get("TMPDIR", "/tmp")) / "momentum-engine-runs"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / f"{as_of}.json"
+
+
+def _session_output_path(as_of: str) -> Path | None:
     try:
-        folder = get_tool_context().session_dir / "engine_runs"
+        ctx = get_tool_context()
     except RuntimeError:
-        folder = Path(os.environ.get("TMPDIR", "/tmp")) / "momentum-engine-runs"
+        return None
+    if ctx.session_dir is None:
+        return None
+    folder = ctx.session_dir / "engine_runs"
     folder.mkdir(parents=True, exist_ok=True)
     return folder / f"{as_of}.json"
 
@@ -72,12 +92,58 @@ def _python_cmd(engine_root: Path) -> list[str]:
     return [sys.executable, str(engine_root / MONITOR_SCRIPT)]
 
 
+def _cache_key(root: Path, as_of: str) -> tuple[str, str]:
+    return (str(root.resolve()), as_of)
+
+
+def _from_cache(
+    cached: dict[str, Any],
+    ticker: str,
+    start: str | None,
+    end: str | None,
+) -> dict[str, Any]:
+    payload = dict(cached)
+    payload["ticker"] = ticker.upper()
+    payload["start"] = start
+    payload["end"] = end
+    return payload
+
+
+def peek_cached_assessment(
+    ticker: str,
+    start: str | None = None,
+    end: str | None = None,
+    *,
+    project_root: Path | None = None,
+) -> dict[str, Any] | None:
+    """Return a warmed pipeline payload from memory or session engine_runs/. No subprocess."""
+    if pipeline_disabled():
+        return None
+    root = resolve_engine_root(project_root)
+    if root is None:
+        return None
+    as_of = _as_of_day(end)
+    cache_key = _cache_key(root, as_of)
+    cached = _CACHE.get(cache_key)
+    if cached is not None:
+        return _from_cache(cached, ticker, start, end)
+    output = _session_output_path(as_of)
+    if output is None or not output.is_file():
+        return None
+    loaded = _load_normalized(output, ticker, start, end, as_of)
+    if loaded is None:
+        return None
+    _CACHE[cache_key] = loaded
+    return loaded
+
+
 def run_monitor_assessment(
     ticker: str,
     start: str | None = None,
     end: str | None = None,
     *,
     project_root: Path | None = None,
+    timeout_s: float | None = None,
 ) -> dict[str, Any] | None:
     """Return a normalized engine payload from a live run_monitor.py, or None."""
     if pipeline_disabled():
@@ -87,19 +153,14 @@ def run_monitor_assessment(
     if script is None or root is None:
         return None
     as_of = _as_of_day(end)
-    cache_key = (str(root.resolve()), as_of)
-    cached = _CACHE.get(cache_key)
+    cached = peek_cached_assessment(ticker, start, end, project_root=project_root)
     if cached is not None:
-        payload = dict(cached)
-        payload["ticker"] = ticker.upper()
-        payload["start"] = start
-        payload["end"] = end
-        return payload
+        return cached
     output = _output_path(as_of)
     if output.is_file():
         loaded = _load_normalized(output, ticker, start, end, as_of)
         if loaded is not None:
-            _CACHE[cache_key] = loaded
+            _CACHE[_cache_key(root, as_of)] = loaded
             return loaded
     cmd = [
         *_python_cmd(root),
@@ -114,7 +175,7 @@ def run_monitor_assessment(
             cwd=str(root),
             capture_output=True,
             text=True,
-            timeout=pipeline_timeout_s(),
+            timeout=pipeline_timeout_s() if timeout_s is None else max(1.0, float(timeout_s)),
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -124,8 +185,35 @@ def run_monitor_assessment(
     loaded = _load_normalized(output, ticker, start, end, as_of)
     if loaded is None:
         return None
-    _CACHE[cache_key] = loaded
+    _CACHE[_cache_key(root, as_of)] = loaded
     return loaded
+
+
+def warm_monitor(
+    ticker: str = "SPY",
+    start: str | None = None,
+    end: str | None = None,
+    *,
+    project_root: Path | None = None,
+    timeout_s: float | None = None,
+) -> dict[str, Any] | None:
+    """Prefetch a live PIT run so ReAct's 10s tool budget hits cache.
+
+    No-op when `scripts/run_monitor.py` is absent (bundled JSON snapshots
+    still serve engine_query without a subprocess).
+    """
+    if pipeline_disabled() or not engine_has_pipeline(project_root):
+        return None
+    peeked = peek_cached_assessment(ticker, start, end, project_root=project_root)
+    if peeked is not None:
+        return peeked
+    return run_monitor_assessment(
+        ticker,
+        start,
+        end,
+        project_root=project_root,
+        timeout_s=warm_timeout_s() if timeout_s is None else timeout_s,
+    )
 
 
 def _load_normalized(

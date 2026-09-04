@@ -7,11 +7,13 @@ This repository is a thin, purpose-built multi-agent research system for US equi
 ```
 Question
    ↓
+Coordinator.warm_engine  (optional live run_monitor.py → session engine_runs/)
+   ↓
 Coordinator.decompose  (injects gap_ledger + prior trajectory briefs)
    ↓
 TaskBoard  (+ optional GAP tasks from reports/gap_ledger.jsonl)
    ↓
-parallel SubAgents  (+ reports/profile_hints.md overlay)
+parallel SubAgents  (+ reports/profile_hints.md overlay; engine_query hits warm cache)
    ↓
 optional one-task replan if BLOCKED or engine_query was mock/stale/V_D fail
    ↓
@@ -36,7 +38,7 @@ Replan is a different one-shot: after the first dispatch wave, if a task is BLOC
 
 Cross-session gaps are different: after verification, rejected/unchecked claims are appended to `reports/gap_ledger.jsonl`. The *next* run may seed at most 2 `kind=gap` tasks from open rows, then mark those rows consumed. Decompose also sees a `failure_brief` of open/recent gaps. That is not a second follow-up round inside the same session.
 
-`engine_query` prefers a live PIT run of `momentum-tail-risk-monitor` (`scripts/run_monitor.py` via `MOMENTUM_ENGINE_DIR` or a sibling checkout) when the JSON snapshot as_of does not match. Matching snapshots are a fast path. If neither exists, it runs a local Daniel–Moskowitz scorer on SPY + ticker closes (24m bear + 6m vol → `risk_state`; 1m drawdown → unwind regime). Labeled mock only if prices are unavailable. Every payload includes a delivery contract `V_D` (`pass` | `pass_with_caveats` | `fail`). File snapshots and `local_dm` cannot `pass` without caveats; a live pipeline run can. Frozen eval (`momentum-research-agent --eval`) grades DM/crowding/unwind fixtures — including the pipeline contract — and appends failures to the ledger.
+`engine_query` prefers a warmed live PIT run of `momentum-tail-risk-monitor` (`scripts/run_monitor.py` via `MOMENTUM_ENGINE_DIR` or a sibling checkout) when Coordinator.warm_engine cached it under `session_dir/engine_runs/`. Matching JSON snapshots — including the frozen 2026-05-29 / 2026-06-30 cases vendored at `fixtures/engine/` — are the fast path. If neither exists, it runs a local Daniel–Moskowitz scorer on SPY + ticker closes (24m bear + 6m vol → `risk_state`; 1m drawdown → unwind regime). Labeled mock only if prices are unavailable. Every payload includes a delivery contract `V_D` (`pass` | `pass_with_caveats` | `fail`). File snapshots and `local_dm` cannot `pass` without caveats; a live pipeline run can. Frozen eval (`momentum-research-agent --eval`) grades DM/crowding/unwind fixtures — including the bundled snapshot and the pipeline contract — and appends failures to the ledger.
 
 ## Artifacts
 
@@ -48,6 +50,7 @@ reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/
   task_board.json
   trajectory.jsonl                       # all tool calls (preview)
   traces.jsonl                           # full engine_query / web_search observations
+  engine_runs/{as_of}.json               # warmed live PIT assessment (when pipeline exists)
   sub_reports/{task_id}_{profile}.json    # source of truth
   sub_reports/{task_id}_{profile}.md      # human rendering
   verification.json                      # session gap ledger (gaps + traces + verdicts)

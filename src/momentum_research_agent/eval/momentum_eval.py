@@ -16,7 +16,10 @@ from momentum_research_agent.models.schemas import (
     VerificationStatus,
 )
 from momentum_research_agent.state.gap_ledger import append_from_verification, ledger_path
-from momentum_research_agent.tools.engine_adapter import normalize_engine_payload
+from momentum_research_agent.tools.engine_adapter import (
+    load_bundled_engine_state,
+    normalize_engine_payload,
+)
 from momentum_research_agent.tools.engine_contract import attach_delivery_contract, grade_engine_payload
 from momentum_research_agent.tools.engine_query import _mock_state
 from momentum_research_agent.tools.local_dm import geometric_closes, score_from_closes
@@ -37,6 +40,7 @@ class EvalCase:
     expect_contract: str | None = None
     expect_as_of_match: bool | None = None
     mock: bool = False
+    bundled: bool = False
 
 
 @dataclass
@@ -159,6 +163,17 @@ CASES: tuple[EvalCase, ...] = (
         expect_regime="FRAGILITY_BUILDING",
         expect_contract="pass",
     ),
+    EvalCase(
+        id="bundled_snapshot_2026_05_29",
+        ticker="NVDA",
+        end="2026-05-29",
+        bundled=True,
+        expect_source="momentum-tail-risk-monitor",
+        expect_risk_state="normal",
+        expect_regime="FRAGILITY_BUILDING",
+        expect_contract="pass_with_caveats",
+        expect_as_of_match=True,
+    ),
 )
 
 
@@ -183,6 +198,15 @@ def _run_case(case: EvalCase) -> EvalResult:
             ),
             requested_end=case.end,
         )
+    elif case.bundled:
+        loaded = load_bundled_engine_state(case.ticker, end=case.end)
+        if loaded is None:
+            return EvalResult(
+                case.id,
+                passed=False,
+                reasons=["bundled fixtures/engine snapshot missing"],
+            )
+        payload = attach_delivery_contract(loaded, requested_end=case.end)
     else:
         loaded = normalize_engine_payload(
             dict(case.snapshot or {}),

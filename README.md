@@ -2,7 +2,7 @@
 
 Multi-agent investigation system for US equity momentum tail-risk. A coordinator decomposes a research question, runs independent analyst sub-agents in parallel, and synthesizes a structured PM brief.
 
-This is an original, purpose-built orchestration layer. It sits on top of a deterministic momentum tail-risk engine (Daniel–Moskowitz risk state, FINRA/GDELT overlays, triggered evidence). `engine_query` runs `scripts/run_monitor.py` in `momentum-tail-risk-monitor` when that checkout is available and the snapshot as_of is stale or missing, otherwise reads JSON snapshots, otherwise runs a local DM scorer on SPY + ticker closes, and falls back to labeled mock data only if prices are unavailable.
+This is an original, purpose-built orchestration layer. It sits on top of a deterministic momentum tail-risk engine (Daniel–Moskowitz risk state, FINRA/GDELT overlays, triggered evidence). `engine_query` prefers a Coordinator-warmed `scripts/run_monitor.py` PIT run from `momentum-tail-risk-monitor` when that checkout is available, otherwise the frozen JSON snapshots in `fixtures/engine/` (2026-05-29 / 2026-06-30), otherwise a local DM scorer on SPY + ticker closes, and falls back to labeled mock data only if prices are unavailable.
 
 ## Architecture
 
@@ -11,6 +11,7 @@ question
    │
    ▼
 Coordinator (deepseek-reasoner)
+   ├─ engine warm → optional live run_monitor.py into session engine_runs/ (90s budget)
    ├─ decompose → TaskBoard (disk; sees prior gap ledger + traces)
    ├─ gap seed  → at most two kind=gap tasks from reports/gap_ledger.jsonl
    ├─ dispatch  → bounded SubAgents in parallel (deepseek-chat, ReAct + allowlisted tools)
@@ -75,7 +76,7 @@ After verification, the coordinator may dispatch at most one extra follow-up rou
 
 Separately, open rows in `gap_ledger.jsonl` may become up to two `kind=gap` tasks at the *start* of the next run. That is the next-session seed, not a second in-session loop. After the first dispatch wave, at most one `kind=replan` task may retry a BLOCKED runtime failure or a mock/stale/`V_D`-fail engine_query.
 
-`--eval` grades frozen Daniel–Moskowitz / crowding / unwind fixtures (including delivery contract `V_D`) and appends failures to `reports/gap_ledger.jsonl`. It does not call DeepSeek.
+`--eval` grades frozen Daniel–Moskowitz / crowding / unwind fixtures (including the bundled 2026-05-29 snapshot and delivery contract `V_D`) and appends failures to `reports/gap_ledger.jsonl`. It does not call DeepSeek.
 
 ## Tools
 
@@ -83,7 +84,7 @@ Separately, open rows in `gap_ledger.jsonl` may become up to two `kind=gap` task
 | --- | --- |
 | `web_search` | Serper, then Tavily. Clear error if neither key is set. |
 | `file_reader` | `.md` `.txt` `.csv` (first 100 rows) `.json`. Refuses paths outside the project. |
-| `engine_query` | Prefers a live `scripts/run_monitor.py` PIT run when the snapshot as_of is missing/stale; matching JSON snapshots are a fast path; else a local DM scorer on SPY + ticker closes; labeled mock only if all three fail. Attaches `delivery_contract` `V_D`. Live pipeline can `pass`; snapshots/`local_dm`/mock cannot. |
+| `engine_query` | Prefers a Coordinator-warmed live `scripts/run_monitor.py` PIT run; matching JSON snapshots (including `fixtures/engine` frozen 2026-05-29 / 2026-06-30) are the fast path; else a local DM scorer on SPY + ticker closes; labeled mock only if all three fail. Attaches `delivery_contract` `V_D`. Live pipeline can `pass`; snapshots/`local_dm`/mock cannot. |
 | `market_data` | yfinance OHLCV table (period default `3mo`). |
 | `shell` | Implemented but **not** assigned to research profiles. Not used in normal flows. |
 

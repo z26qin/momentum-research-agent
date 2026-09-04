@@ -1,10 +1,11 @@
 """Read momentum-tail-risk-monitor artifacts without importing that package.
 
 The engine is a PIT parquet pipeline, not a ticker API. This adapter maps
-existing JSON snapshots (latest_assessment, structured_snapshot, evidence
-cards) into the engine_query contract. A live `scripts/run_monitor.py`
-subprocess is preferred when the snapshot as_of does not match. Missing
-files fall back to local_dm / mock. Do not import that package.
+JSON snapshots (latest_assessment, structured_snapshot, evidence cards)
+into the engine_query contract — including the frozen cases vendored at
+`fixtures/engine/`. A live `scripts/run_monitor.py` subprocess is preferred
+when warmed or when the snapshot as_of does not match. Missing files fall
+back to local_dm / mock. Do not import that package.
 """
 
 from __future__ import annotations
@@ -32,12 +33,32 @@ def looks_like_engine(path: Path | None) -> bool:
     )
 
 
+def bundled_engine_root(project_root: Path | None = None) -> Path | None:
+    """Frozen 2026-05-29 / 2026-06-30 snapshots shipped with this repo."""
+    candidates: list[Path] = []
+    if project_root is not None:
+        candidates.append(Path(project_root) / "fixtures" / "engine")
+    here = Path(__file__).resolve()
+    if len(here.parents) >= 4:
+        candidates.append(here.parents[3] / "fixtures" / "engine")
+    candidates.append(here.parents[1] / "fixtures" / "engine")
+    seen: set[Path] = set()
+    for path in candidates:
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if looks_like_engine(resolved):
+            return resolved
+    return None
+
+
 def resolve_engine_root(project_root: Path | None = None) -> Path | None:
     """Return the engine repo root, or None to keep engine_query on mock data.
 
     `MOMENTUM_ENGINE_DIR` wins. If it is set but missing, do not silently
-    fall back to a sibling checkout. Otherwise look for
-    `../momentum-tail-risk-monitor` next to this project.
+    fall back to a sibling checkout or bundled fixtures. Otherwise look for
+    `../momentum-tail-risk-monitor`, then this repo's `fixtures/engine`.
     """
     raw = os.environ.get("MOMENTUM_ENGINE_DIR", "").strip()
     if raw:
@@ -56,7 +77,7 @@ def resolve_engine_root(project_root: Path | None = None) -> Path | None:
     sibling = root.parent / "momentum-tail-risk-monitor"
     if looks_like_engine(sibling):
         return sibling
-    return None
+    return bundled_engine_root(root)
 
 
 def iter_engine_artifacts(root: Path) -> list[Path]:
@@ -112,6 +133,26 @@ def artifact_as_of(path: Path, payload: dict[str, Any]) -> str | None:
     if parent.startswith("snapshot_"):
         return parent.removeprefix("snapshot_")
     return None
+
+
+def load_bundled_engine_state(
+    ticker: str,
+    start: str | None = None,
+    end: str | None = None,
+    *,
+    project_root: Path | None = None,
+) -> dict[str, Any] | None:
+    """Load a frozen fixtures/engine snapshot, ignoring MOMENTUM_ENGINE_DIR."""
+    root = bundled_engine_root(project_root)
+    if root is None:
+        return None
+    path = select_engine_artifact(root, as_of=end)
+    if path is None:
+        return None
+    payload = _read_json(path)
+    if payload is None:
+        return None
+    return normalize_engine_payload(payload, ticker, path, start=start, end=end)
 
 
 def load_engine_state(

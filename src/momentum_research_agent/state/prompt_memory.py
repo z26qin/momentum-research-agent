@@ -60,8 +60,9 @@ _TRACE_RULES: dict[str, str] = {
         "requested end date instead of using the stale file."
     ),
     "no_snapshot": (
-        "No monitor snapshot was found. Point MOMENTUM_ENGINE_DIR at the "
-        "momentum-tail-risk-monitor checkout before claiming engine state."
+    "No monitor snapshot was found. Point MOMENTUM_ENGINE_DIR at the "
+    "momentum-tail-risk-monitor checkout, or use the frozen cases under "
+    "fixtures/engine, before claiming engine state."
     ),
 }
 

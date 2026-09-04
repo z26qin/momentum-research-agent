@@ -7,7 +7,9 @@ import pytest
 
 from momentum_research_agent.tools.engine_pipeline import (
     clear_pipeline_cache,
+    peek_cached_assessment,
     run_monitor_assessment,
+    warm_monitor,
 )
 from momentum_research_agent.tools.engine_query import engine_query
 from momentum_research_agent.tools.registry import ToolContext, set_tool_context
@@ -139,3 +141,48 @@ def test_matching_snapshot_skips_pipeline(
     assert loaded is not None
     assert loaded["pipeline_run"] is False
     assert loaded["risk_state"] == "normal"
+
+
+@pytest.mark.asyncio
+async def test_warm_then_engine_query_prefers_pipeline_over_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine = _stub_engine(tmp_path / "monitor")
+    snap = engine / "outputs" / "latest_assessment.json"
+    snap.parent.mkdir(parents=True, exist_ok=True)
+    snap.write_text(
+        json.dumps(
+            {
+                "as_of_date": "2026-05-29",
+                "overall_risk_state": "normal",
+                "mechanical_unwind_state": "QUIET",
+                "mechanism_scores": {"crowded_unwind": 10},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(engine))
+    set_tool_context(
+        ToolContext(project_root=tmp_path, session_dir=tmp_path / "session")
+    )
+    warmed = warm_monitor("NVDA", end="2026-05-29", project_root=tmp_path, timeout_s=5)
+    assert warmed is not None
+    assert warmed["pipeline_run"] is True
+    assert warmed["risk_state"] == "panic_elevated"
+    peeked = peek_cached_assessment("SMH", end="2026-05-29", project_root=tmp_path)
+    assert peeked is not None
+    assert peeked["ticker"] == "SMH"
+    assert peeked["pipeline_run"] is True
+    raw = await engine_query("NVDA", end="2026-05-29")
+    payload = json.loads(raw)
+    assert payload["pipeline_run"] is True
+    assert payload["risk_state"] == "panic_elevated"
+    assert payload["delivery_contract"]["verdict"] == "pass"
+
+
+def test_warm_is_noop_without_monitor_script(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("MOMENTUM_ENGINE_DIR", raising=False)
+    monkeypatch.setenv("MOMENTUM_DISABLE_PIPELINE", "1")
+    assert warm_monitor("NVDA", end="2026-05-29", project_root=tmp_path) is None

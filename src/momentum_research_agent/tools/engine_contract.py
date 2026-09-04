@@ -1,9 +1,8 @@
 """Delivery contract V_D for momentum engine_query payloads.
 
-The adapter still reads snapshots, not a live PIT pipeline. This grader
-says whether a payload is usable as Daniel–Moskowitz risk state for
-crowding / unwind / crash work. A live `run_monitor.py` assessment can
-pass; file snapshots, local_dm, and mock cannot pass without caveats.
+A live `run_monitor.py` assessment (pipeline_run=True) can pass. File
+snapshots — including the frozen cases under fixtures/engine — local_dm,
+and mock cannot pass without caveats.
 """
 
 from __future__ import annotations

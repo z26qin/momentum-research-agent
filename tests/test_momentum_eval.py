@@ -48,3 +48,7 @@ def test_eval_failures_append_to_ledger(tmp_path: Path) -> None:
         tmp_path,
         [EvalResult("broken_payload_fails_vd", False, ["again"], {})],
     ) == 0
+
+
+def test_eval_includes_bundled_snapshot_case() -> None:
+    assert any(case.id == "bundled_snapshot_2026_05_29" and case.bundled for case in CASES)
