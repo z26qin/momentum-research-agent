@@ -11,6 +11,8 @@ Coordinator
    ↓
 TaskBoard
    ↓
+GAP seed (at most 2 kind=gap from reports/gap_ledger.jsonl)
+   ↓
 parallel SubAgents
    ↓
 bounded ReAct runtime
@@ -23,6 +25,8 @@ ResearchReport JSON
    ↓
 independent Verifier  (static audit + bounded ReAct re-check)
    ↓
+append verification.gaps → reports/gap_ledger.jsonl
+   ↓
 optional one-round follow-up  (rejected / unchecked only)
    ↓
 VerificationReport JSON
@@ -32,7 +36,9 @@ Coordinator synthesis
 
 `summary` is for humans. `findings: list[Evidence]` is the machine-readable source of truth. The verifier does not produce new research claims; it only judges existing `evidence_id`s. Conservative merge: static REJECTED/UNCHECKED cannot be overwritten to VERIFIED by a more optimistic LLM.
 
-`verification.json` is the momentum gap ledger: `gaps[]` (rejected/unchecked/missing/unanswered/engine_mock) plus `traces[]` of replayable `engine_query` / `web_search` calls. Live search is stored-observation replay; engine snapshots replay from `source_path` when present.
+`verification.json` is the per-session momentum gap ledger: `gaps[]` (rejected/unchecked/missing/unanswered/engine_mock) plus `traces[]` of replayable `engine_query` / `web_search` calls. Live search is stored-observation replay; engine snapshots replay from `source_path` when present.
+
+After verify, those `gaps[]` are appended to the cross-session file `reports/gap_ledger.jsonl` (deduped by `evidence_id`, status `OPEN` / `CONSUMED`). The next session classifies each row as `crowding` / `unwind_crash` / `engine_freshness` / `source_quality`. After decompose and before dispatch, `seed_from_ledger()` plants at most 2 `kind=gap` tasks (`crowding` → `flow_analyst`, unwind/engine → `momentum_analyst`) and marks those rows `CONSUMED`. This is not a second follow-up and not AgentBus.
 
 Follow-up is one bounded extra dispatch (default max 2 tasks) using the original analyst profiles. It does not reopen verified items, does not loop, and is skipped on a session that already has `kind=followup` tasks or a completed synthesis. AgentBus is still out of scope.
 
@@ -41,12 +47,13 @@ Follow-up is one bounded extra dispatch (default max 2 tasks) using the original
 ## Artifacts
 
 ```
+reports/gap_ledger.jsonl                  # cross-session OPEN/CONSUMED gaps
 reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/
   task_board.json
   sub_reports/{task_id}_{profile}.json    # source of truth
   sub_reports/{task_id}_{profile}.md      # human rendering
   traces.jsonl                       # append-only engine_query / web_search log
-  verification.json                  # momentum gap ledger (gaps + replayable traces + verdicts)
+  verification.json                  # per-session momentum gap ledger (gaps + replayable traces + verdicts)
   verification.md
   synthesis.md
   synthesis.json
@@ -115,4 +122,4 @@ Do not hit the live DeepSeek API in unit tests.
 
 ## What not to build here
 
-No AgentBus, SpawnGuard, verifier-of-the-verifier, web UI, Docker, database, MCP server, or extra agent frameworks. Follow-up research is the one bounded round above — do not turn it into an unbounded loop.
+No AgentBus, SpawnGuard, verifier-of-the-verifier, web UI, Docker, database, MCP server, or extra agent frameworks. Follow-up research is the one bounded in-session round above — do not turn it into an unbounded loop. Cross-session gap seed plants at most 2 `kind=gap` tasks from `reports/gap_ledger.jsonl`; it is not a second follow-up.

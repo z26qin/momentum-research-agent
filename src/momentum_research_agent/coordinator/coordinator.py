@@ -1,4 +1,4 @@
-"""Coordinator: decompose → dispatch → verify → follow-up → synthesize."""
+"""Coordinator: decompose → gap seed → dispatch → verify → follow-up → synthesize."""
 
 from __future__ import annotations
 
@@ -21,6 +21,11 @@ from momentum_research_agent.coordinator.followup import (
     already_followed_up,
     followup_specs,
     is_followup_task,
+)
+from momentum_research_agent.coordinator.gap_seed import (
+    already_gap_seeded,
+    record_session_gaps,
+    seed_open_gaps,
 )
 from momentum_research_agent.coordinator.task_board import TaskBoard
 from momentum_research_agent.models.schemas import (
@@ -89,6 +94,7 @@ class Coordinator:
         self.board.question = question
         self.board.save()
         await self.decompose(question)
+        self.seed_from_ledger()
         await self.dispatch_all()
         await self.verify()
         if await self.follow_up():
@@ -104,11 +110,14 @@ class Coordinator:
         ]
         ran_dispatch = False
         if pending:
+            if not already_gap_seeded(self.board.tasks):
+                self.seed_from_ledger()
             self.board.requeue_unfinished()
             await self.dispatch_all()
             ran_dispatch = True
         elif not self.board.tasks:
             await self.decompose(self.board.question)
+            self.seed_from_ledger()
             await self.dispatch_all()
             ran_dispatch = True
         self._load_existing_sub_reports()
@@ -251,7 +260,29 @@ class Coordinator:
             f"[bold]Verification[/bold] — {self.verification.overall_status}: "
             f"{self.verification.summary}"
         )
+        self.record_gaps()
         return self.verification
+
+    def record_gaps(self) -> None:
+        """Append this session's verification.gaps to reports/gap_ledger.jsonl."""
+        gaps = self.verification.gaps if self.verification is not None else None
+        record_session_gaps(
+            self.project_root,
+            self.session_dir,
+            self.board.session_id,
+            report_gaps=gaps,
+        )
+
+    def seed_from_ledger(self) -> list[Task]:
+        """After decompose, plant at most 2 kind=gap tasks from OPEN ledger rows."""
+        self.record_gaps()
+        planted = seed_open_gaps(self.board, self.project_root)
+        if planted:
+            self.console.print(
+                f"[bold]Gap seed[/bold] — planted {len(planted)} kind=gap task(s)"
+            )
+            self.console.print(self.render_board_table())
+        return planted
 
     async def follow_up(self) -> bool:
         """One bounded round of research on rejected/unchecked evidence."""

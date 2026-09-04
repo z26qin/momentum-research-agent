@@ -76,6 +76,8 @@ def test_unchecked_and_mock_engine_become_gaps() -> None:
     assert GapKind.UNCHECKED_EVIDENCE in kinds
     assert GapKind.UNANSWERED_QUESTION in kinds
     assert GapKind.ENGINE_MOCK in kinds
+    mock_gap = next(item for item in ledger.gaps if item.kind is GapKind.ENGINE_MOCK)
+    assert mock_gap.evidence_id == "engine_mock:NVDA"
     assert ledger.schema_kind == "momentum_gap_ledger"
     assert {item.id for item in ledger.traces} == {engine.id, search.id}
     crowding = next(item for item in ledger.gaps if item.kind is GapKind.UNCHECKED_EVIDENCE)

@@ -12,9 +12,11 @@ question
    ▼
 Coordinator (deepseek-reasoner)
    ├─ decompose → TaskBoard (disk)
+   ├─ gap seed  → at most 2 kind=gap tasks from reports/gap_ledger.jsonl
    ├─ dispatch  → bounded SubAgents in parallel (deepseek-chat, ReAct + allowlisted tools)
    │                └─ ResearchReport { findings: Evidence[], summary, status }
    ├─ verify    → independent Verifier (static audit + ReAct re-check of Evidence[])
+   ├─ append    → verification.gaps → reports/gap_ledger.jsonl (OPEN / CONSUMED)
    ├─ follow-up → at most one extra dispatch on rejected/unchecked evidence
    └─ synthesize → reports/{session}/synthesis.md
 ```
@@ -49,15 +51,16 @@ On startup the CLI prints a Rich banner, a decomposition table, live task-board 
 
 ## Session artifacts
 
-Each run writes `reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/`:
+Each run writes `reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/`, plus a cross-session `reports/gap_ledger.jsonl`:
 
 | File | Purpose |
 | --- | --- |
+| `reports/gap_ledger.jsonl` | Cross-session OPEN/CONSUMED gaps (deduped by `evidence_id`) |
 | `task_board.json` | Full task history with timestamps |
 | `sub_reports/{task_id}_{profile}.json` | Canonical `ResearchReport` (Evidence[]) |
 | `sub_reports/{task_id}_{profile}.md` | Human-readable rendering of the same report |
 | `traces.jsonl` | Append-only `engine_query` / `web_search` replay log |
-| `verification.json` / `verification.md` | Momentum gap ledger: `gaps[]` + replayable `traces[]` + verdicts |
+| `verification.json` / `verification.md` | Per-session momentum gap ledger: `gaps[]` + replayable `traces[]` + verdicts |
 | `synthesis.md` / `synthesis.json` | Final PM brief |
 
 `--resume` reloads JSON reports first. Markdown-only leftovers from older sessions become a low-confidence compatibility report.
@@ -67,6 +70,8 @@ Each run writes `reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/`:
 Each sub-agent is capped by `LoopBudget`: 8 ReAct turns, 45s overall deadline, 20s per LLM call, 10s per tool. Cancellation (`asyncio.CancelledError`) propagates. Unknown analyst profiles and off-allowlist tools fail closed. `shell` is not part of normal research capabilities.
 
 After verification, the coordinator may dispatch at most one extra follow-up round (default 2 tasks) for `rejected` / `unchecked` evidence, then re-verify once. Verified items are not reopened. `--mode single` does not follow up.
+
+The next session may plant at most 2 `kind=gap` tasks from `reports/gap_ledger.jsonl` after decompose (`crowding` → `flow_analyst`, unwind/engine → `momentum_analyst`). That is not a second follow-up.
 
 ## Tools
 
