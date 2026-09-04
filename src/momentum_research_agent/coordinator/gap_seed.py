@@ -1,4 +1,5 @@
-"""Cross-session gap ledger: append after verify, plant kind=gap before dispatch.
+"""Cross-session gap ledger: append after verify, plant kind=gap before dispatch,
+then write CONSUMED rows to CLOSED or back to OPEN from this session's verdicts.
 
 This is not a second follow-up round and not AgentBus. Follow-up stays one
 in-session pass (max 2). Gap seed reads prior OPEN rows from
@@ -21,6 +22,9 @@ from momentum_research_agent.models.schemas import (
     MomentumCapability,
     Task,
     TaskKind,
+    TaskStatus,
+    VerificationReport,
+    VerificationStatus,
 )
 from momentum_research_agent.state.reports import load_verification_report
 
@@ -117,7 +121,7 @@ def append_gaps(
     *,
     session_id: str,
 ) -> list[GapLedgerRow]:
-    """Append new gaps. Duplicate `evidence_id` (OPEN or CONSUMED) is skipped."""
+    """Append new gaps. Duplicate `evidence_id` (any status) is skipped."""
     if not gaps:
         return []
     with _LOCK:
@@ -215,11 +219,81 @@ def seed_open_gaps(board: TaskBoard, project_root: Path) -> list[Task]:
         return planted
 
 
+_STILL_OPEN_GAP_KINDS = frozenset(
+    {GapKind.ENGINE_MOCK, GapKind.REJECTED_EVIDENCE, GapKind.UNCHECKED_EVIDENCE}
+)
+_STILL_OPEN_VERDICTS = frozenset(
+    {VerificationStatus.REJECTED, VerificationStatus.UNCHECKED}
+)
+_CLOSED_VERDICTS = frozenset(
+    {VerificationStatus.VERIFIED, VerificationStatus.WEAK}
+)
+
+
+def planted_gap_still_open(
+    row: GapLedgerRow,
+    verification: VerificationReport,
+    tasks: list[Task],
+) -> bool:
+    """True when this session did not actually close the planted gap."""
+    task = next((item for item in tasks if item.id == row.consumed_task_id), None)
+    if task is None or task.status is not TaskStatus.COMPLETED:
+        return True
+    related_gaps = [
+        gap
+        for gap in verification.gaps
+        if gap.task_id == row.consumed_task_id or gap.evidence_id == row.evidence_id
+    ]
+    if any(gap.kind in _STILL_OPEN_GAP_KINDS for gap in related_gaps):
+        return True
+    related_verdicts = [
+        verdict
+        for verdict in verification.verdicts
+        if verdict.task_id == row.consumed_task_id
+    ]
+    if any(verdict.status in _STILL_OPEN_VERDICTS for verdict in related_verdicts):
+        return True
+    if row.capability is MomentumCapability.ENGINE_FRESHNESS:
+        return False
+    if not related_verdicts:
+        return True
+    return not any(verdict.status in _CLOSED_VERDICTS for verdict in related_verdicts)
+
+
+def resolve_consumed_gaps(
+    project_root: Path,
+    board: TaskBoard,
+    verification: VerificationReport,
+) -> list[GapLedgerRow]:
+    """Write this session's planted rows to CLOSED or back to OPEN.
+
+    CONSUMED means we asked; CLOSED means the gap is actually gone. Follow-up
+    is unchanged. Rows planted by other sessions are left alone.
+    """
+    tasks = board.tasks
+    with _LOCK:
+        rows = load_rows(project_root)
+        changed: list[GapLedgerRow] = []
+        for row in rows:
+            if row.consumed_session_id != board.session_id:
+                continue
+            still_open = planted_gap_still_open(row, verification, tasks)
+            target = GapLedgerStatus.OPEN if still_open else GapLedgerStatus.CLOSED
+            if row.status is target:
+                continue
+            row.status = target
+            changed.append(row)
+        if changed:
+            write_rows(project_root, rows)
+        return changed
+
+
 def failure_brief(
     project_root: Path,
     *,
     max_open: int = 4,
     max_consumed: int = 2,
+    max_closed: int = 2,
 ) -> str:
     """Compact ledger digest for the next decompose call."""
     rows = load_rows(project_root)
@@ -227,11 +301,14 @@ def failure_brief(
         return ""
     open_rows = [row for row in rows if row.status is GapLedgerStatus.OPEN][-max_open:]
     consumed = [row for row in rows if row.status is GapLedgerStatus.CONSUMED][-max_consumed:]
+    closed = [row for row in rows if row.status is GapLedgerStatus.CLOSED][-max_closed:]
     lines: list[str] = []
     for row in open_rows:
         lines.append(_brief_line("OPEN", row))
     for row in consumed:
         lines.append(_brief_line("CONSUMED", row))
+    for row in closed:
+        lines.append(_brief_line("CLOSED", row))
     return "\n".join(lines)
 
 

@@ -220,6 +220,7 @@ class MomentumCapability(str, Enum):
 class GapLedgerStatus(str, Enum):
     OPEN = "OPEN"
     CONSUMED = "CONSUMED"
+    CLOSED = "CLOSED"
 
 
 class ReplayHint(BaseModel):

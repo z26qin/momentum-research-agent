@@ -23,6 +23,8 @@ independent Verifier  (compiles verification.json gaps[] / traces[])
    ↓
 append verification.gaps → reports/gap_ledger.jsonl
    ↓
+gap resolve (CONSUMED → CLOSED or back to OPEN)
+   ↓
 optional one-round follow-up  (rejected / unchecked only)
    ↓
 Coordinator synthesis
@@ -32,7 +34,7 @@ Coordinator synthesis
 
 `verification.json` is the in-session momentum gap ledger: `gaps[]` (rejected/unchecked/missing/unanswered/engine_mock) plus replayable `engine_query` / `web_search` `traces[]`. Live search is stored-observation replay; engine snapshots replay from `source_path` when present.
 
-After verify, those `gaps[]` are appended to the cross-session file `reports/gap_ledger.jsonl` (deduped by `evidence_id`, status `OPEN` / `CONSUMED`). The next session classifies each row as `crowding` / `unwind_crash` / `engine_freshness` / `source_quality`. After decompose and before dispatch, `seed_from_ledger()` plants at most 2 `kind=gap` tasks (`crowding` → `flow_analyst`, unwind/engine → `momentum_analyst`) and marks those rows `CONSUMED`. This is not a second follow-up and not AgentBus.
+After verify, those `gaps[]` are appended to the cross-session file `reports/gap_ledger.jsonl` (deduped by `evidence_id`, status `OPEN` / `CONSUMED` / `CLOSED`). The next session classifies each row as `crowding` / `unwind_crash` / `engine_freshness` / `source_quality`. After decompose and before dispatch, `seed_from_ledger()` plants at most 2 `kind=gap` tasks (`crowding` → `flow_analyst`, unwind/engine → `momentum_analyst`) and marks those rows `CONSUMED`. After this session verifies those planted tasks, the same rows become `CLOSED` (VERIFIED / no longer `ENGINE_MOCK`) or go back to `OPEN` (still rejected / unchecked / mock). This is not a second follow-up and not AgentBus.
 
 Follow-up is one bounded extra dispatch (default max 2 tasks) using the original analyst profiles. It does not reopen verified items, does not loop, and is skipped on a session that already has `kind=followup` tasks or a completed synthesis. AgentBus is still out of scope.
 
@@ -45,7 +47,7 @@ Cross-session gaps are different: after verification, rejected/unchecked claims 
 ## Artifacts
 
 ```
-reports/gap_ledger.jsonl                 # cross-session OPEN/CONSUMED gaps
+reports/gap_ledger.jsonl                 # cross-session OPEN/CONSUMED/CLOSED gaps
 reports/profile_hints.md                 # generated overlay from ledger + traces
 reports/prompt_evolution.json            # capability/trace rules used in that overlay
 reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/
@@ -124,4 +126,4 @@ Do not hit the live DeepSeek API in unit tests.
 
 ## What not to build here
 
-No AgentBus, SpawnGuard, verifier-of-the-verifier, web UI, Docker, database, MCP server, or extra agent frameworks. Follow-up research is the one bounded round above — do not turn it into an unbounded loop. Replan is the one BLOCKED retry above. Cross-session gap seed plants at most 2 `kind=gap` tasks from `reports/gap_ledger.jsonl`; it is not a second follow-up.
+No AgentBus, SpawnGuard, verifier-of-the-verifier, web UI, Docker, database, MCP server, or extra agent frameworks. Follow-up research is the one bounded round above — do not turn it into an unbounded loop. Replan is the one BLOCKED retry above. Cross-session gap seed plants at most 2 `kind=gap` tasks from `reports/gap_ledger.jsonl`; after verify those rows become `CLOSED` or `OPEN` again. It is not a second follow-up.

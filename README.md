@@ -18,7 +18,8 @@ Coordinator (deepseek-reasoner)
    │                └─ ResearchReport { findings: Evidence[], summary, status }
    ├─ replan    → at most one kind=replan task if a research task is BLOCKED or engine_query was mock/stale/V_D fail
    ├─ verify    → independent Verifier (static audit + ReAct re-check of Evidence[])
-   ├─ append    → verification.gaps → reports/gap_ledger.jsonl (OPEN / CONSUMED)
+   ├─ append    → verification.gaps → reports/gap_ledger.jsonl (OPEN / CONSUMED / CLOSED)
+   ├─ resolve   → planted CONSUMED rows become CLOSED or OPEN again
    ├─ follow-up → at most one extra dispatch on rejected/unchecked evidence
    └─ synthesize → reports/{session}/synthesis.md
 ```
@@ -57,7 +58,7 @@ Each run writes `reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/`, plus a cross-sessio
 
 | File | Purpose |
 | --- | --- |
-| `reports/gap_ledger.jsonl` | Cross-session OPEN/CONSUMED gaps (deduped by `evidence_id`) |
+| `reports/gap_ledger.jsonl` | Cross-session OPEN/CONSUMED/CLOSED gaps (deduped by `evidence_id`) |
 | `task_board.json` | Full task history with timestamps |
 | `trajectory.jsonl` | All tool calls for this session (preview) |
 | `traces.jsonl` | Full `engine_query` / `web_search` observations for replay |
@@ -76,7 +77,7 @@ Each sub-agent is capped by `LoopBudget`: 8 ReAct turns, 45s overall deadline, 2
 
 After verification, the coordinator may dispatch at most one extra follow-up round (default 2 tasks) for `rejected` / `unchecked` evidence, then re-verify once. Verified items are not reopened. `--mode single` does not follow up.
 
-The next session may plant at most 2 `kind=gap` tasks from `reports/gap_ledger.jsonl` after decompose (`crowding` → `flow_analyst`, unwind/engine → `momentum_analyst`). That is not a second follow-up. After the first dispatch wave, at most one `kind=replan` task may retry a BLOCKED runtime failure or a mock/stale/`V_D`-fail engine_query.
+The next session may plant at most 2 `kind=gap` tasks from `reports/gap_ledger.jsonl` after decompose (`crowding` → `flow_analyst`, unwind/engine → `momentum_analyst`). After that session verifies the planted tasks, rows become `CLOSED` or go back to `OPEN`. That is not a second follow-up. After the first dispatch wave, at most one `kind=replan` task may retry a BLOCKED runtime failure or a mock/stale/`V_D`-fail engine_query.
 
 `--eval` grades frozen Daniel–Moskowitz / crowding / unwind fixtures (including the bundled 2026-05-29 snapshot and delivery contract `V_D`) and appends failures to `reports/gap_ledger.jsonl`. It does not call DeepSeek.
 

@@ -25,6 +25,7 @@ from momentum_research_agent.coordinator.followup import (
 from momentum_research_agent.coordinator.gap_seed import (
     already_gap_seeded,
     record_session_gaps,
+    resolve_consumed_gaps,
     seed_open_gaps,
 )
 from momentum_research_agent.coordinator.replan import already_replanned, engine_failure_replan_specs, replan_specs
@@ -32,6 +33,7 @@ from momentum_research_agent.coordinator.task_board import TaskBoard
 from momentum_research_agent.models.schemas import (
     AgentRunResult,
     DecompositionResult,
+    GapLedgerStatus,
     ResearchReport,
     SynthesisReport,
     Task,
@@ -325,6 +327,7 @@ class Coordinator:
             f"{self.verification.summary}"
         )
         self.record_gaps()
+        self.resolve_planted_gaps()
         return self.verification
 
     def record_gaps(self) -> None:
@@ -341,6 +344,20 @@ class Coordinator:
                 f"[bold]Gap ledger[/bold] — recorded {len(written)} open gap(s)"
             )
             refresh_profile_hints(self.project_root, self.session_dir)
+
+    def resolve_planted_gaps(self) -> None:
+        """Mark this session's planted rows CLOSED or OPEN from verification."""
+        if self.verification is None:
+            return
+        changed = resolve_consumed_gaps(self.project_root, self.board, self.verification)
+        if not changed:
+            return
+        closed = sum(1 for row in changed if row.status is GapLedgerStatus.CLOSED)
+        reopened = sum(1 for row in changed if row.status is GapLedgerStatus.OPEN)
+        self.console.print(
+            f"[bold]Gap resolve[/bold] — closed {closed}, reopened {reopened}"
+        )
+        refresh_profile_hints(self.project_root, self.session_dir)
 
     def seed_from_ledger(self) -> list[Task]:
         """After decompose, plant at most 2 kind=gap tasks from OPEN ledger rows."""
