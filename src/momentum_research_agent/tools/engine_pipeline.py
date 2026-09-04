@@ -140,22 +140,26 @@ def run_pipeline(
         )
     except OSError as exc:
         return PipelineRun(False, None, str(exc), False, root, time.monotonic() - started)
+    payload = _load_cached(cache, as_of)
+    if payload is not None:
+        # Judge the artifact, not the process. GitHub runners have seen
+        # pyarrow/pandas abort after save_assessment ("terminate called
+        # without an active exception"). Deleting a good cache made V_D
+        # depend on the exit code.
+        return PipelineRun(True, payload, None, False, root, time.monotonic() - started)
     if proc.returncode != 0:
         err = (proc.stderr or proc.stdout or f"exit {proc.returncode}").strip()
         if cache.is_file():
             cache.unlink(missing_ok=True)
         return PipelineRun(False, None, err[:500], False, root, time.monotonic() - started)
-    payload = _load_cached(cache, as_of)
-    if payload is None:
-        return PipelineRun(
-            False,
-            None,
-            "run_monitor.py wrote no usable run_mvp assessment",
-            False,
-            root,
-            time.monotonic() - started,
-        )
-    return PipelineRun(True, payload, None, False, root, time.monotonic() - started)
+    return PipelineRun(
+        False,
+        None,
+        "run_monitor.py wrote no usable run_mvp assessment",
+        False,
+        root,
+        time.monotonic() - started,
+    )
 
 
 def warm_pipeline(

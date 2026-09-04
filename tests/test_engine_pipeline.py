@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -48,6 +49,48 @@ def test_json_only_dir_is_root_but_not_pipeline(
     monkeypatch.delenv("MOMENTUM_DISABLE_PIPELINE", raising=False)
     assert resolve_engine_root(tmp_path) == tmp_path
     assert resolve_pipeline_root(tmp_path) is None
+
+
+def test_run_pipeline_keeps_assessment_after_teardown_abort(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A written run_mvp JSON is success even if the subprocess aborts later."""
+    engine = tmp_path / "engine"
+    (engine / "scripts").mkdir(parents=True)
+    (engine / "scripts" / "run_monitor.py").write_text("# stub\n", encoding="utf-8")
+    as_of = "2026-05-29"
+    cache = engine / "outputs" / "pipeline_runs" / f"{as_of}.json"
+
+    def fake_run(cmd, **kwargs):  # noqa: ANN001
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(
+            json.dumps(
+                {
+                    "as_of_date": as_of,
+                    "overall_risk_state": "normal",
+                    "full_run_fingerprint": "abc",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(
+            cmd,
+            1,
+            stdout="",
+            stderr="terminate called without an active exception",
+        )
+
+    monkeypatch.delenv("MOMENTUM_DISABLE_PIPELINE", raising=False)
+    monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(engine))
+    monkeypatch.setattr(
+        "momentum_research_agent.tools.engine_pipeline.subprocess.run",
+        fake_run,
+    )
+    run = run_pipeline(as_of, project_root=tmp_path)
+    assert run.ok, run.error
+    assert run.assessment is not None
+    assert run.assessment["overall_risk_state"] == "normal"
+    assert cache.is_file()
 
 
 def test_repo_does_not_import_monitor_package() -> None:
