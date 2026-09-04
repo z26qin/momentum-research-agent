@@ -1,4 +1,4 @@
-"""Bounded in-session retry for BLOCKED tasks.
+"""Bounded in-session retry for BLOCKED tasks and engine-delivery failures.
 
 One extra dispatch wave, at most one replacement task. Coordinator-owned.
 Not AgentBus, not a second follow-up round, not a GAP ledger seed.
@@ -7,8 +7,13 @@ Not AgentBus, not a second follow-up round, not a GAP ledger seed.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from momentum_research_agent.models.schemas import Task, TaskKind
+from momentum_research_agent.state.trajectory import (
+    ENGINE_FAILURE_MARKERS,
+    session_failure_markers,
+)
 from momentum_research_agent.tools import RESEARCH_PROFILES
 
 REPLAN_TITLE_PREFIX = "Replan:"
@@ -55,9 +60,9 @@ def replan_specs(
                 title=f"{REPLAN_TITLE_PREFIX} {title_claim}",
                 assignment=(
                     "The previous attempt at this investigation was BLOCKED at "
-                    "runtime. Retry the same mandate. Prefer a live engine "
-                    "snapshot over mock data. Do not invent a second follow-up "
-                    "loop.\n\n"
+                    "runtime. Retry the same mandate. Prefer a live "
+                    "`scripts/run_monitor.py` PIT assessment over a file snapshot "
+                    "or mock data. Do not invent a second follow-up loop.\n\n"
                     f"Research question:\n{question}\n\n"
                     f"Prior error ({error_type}): {error}\n\n"
                     f"Original assignment:\n{task.assignment}"
@@ -67,3 +72,39 @@ def replan_specs(
             )
         )
     return specs
+
+
+def engine_failure_replan_specs(
+    session_dir: Path,
+    question: str,
+    *,
+    max_tasks: int = MAX_REPLAN_TASKS,
+) -> list[ReplanSpec]:
+    """One live replan when this session's engine_query was mock / stale / V_D fail.
+
+    Distinct from follow-up (verification verdicts) and from GAP seeds (next run).
+    """
+    if max_tasks <= 0:
+        return []
+    markers = [
+        item for item in session_failure_markers(session_dir) if item in ENGINE_FAILURE_MARKERS
+    ]
+    if not markers:
+        return []
+    joined = ", ".join(markers)
+    return [
+        ReplanSpec(
+            title=f"{REPLAN_TITLE_PREFIX} live engine / {joined}",
+            assignment=(
+                "This session's engine_query returned mock data, a stale snapshot, "
+                "or delivery_contract V_D fail. Re-query the PIT monitor "
+                "(`scripts/run_monitor.py` / MOMENTUM_ENGINE_DIR). Do not treat "
+                "source=mock or verdict=fail as labeled. Crowding claims still "
+                "need FINRA/ETF/options sources.\n\n"
+                f"Research question:\n{question}\n\n"
+                f"Trajectory markers: {joined}"
+            ),
+            profile=DEFAULT_REPLAN_PROFILE,
+            original_task_id="engine",
+        )
+    ][:max_tasks]

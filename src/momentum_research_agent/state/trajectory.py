@@ -12,6 +12,9 @@ from typing import Any
 
 from momentum_research_agent.state.persistence import append_jsonl, read_jsonl
 
+ENGINE_FAILURE_MARKERS = frozenset(
+    {"mock_engine", "vd_fail", "no_snapshot", "stale_as_of"}
+)
 TRAJECTORY_NAME = "trajectory.jsonl"
 _PREVIEW = 240
 
@@ -96,6 +99,22 @@ def trajectory_failure_brief(
             if used_sessions >= max_sessions:
                 break
     return "\n".join(lines)
+
+
+def session_failure_markers(session_dir: Path) -> list[str]:
+    """Failure markers from this session's trajectory (live replan input)."""
+    path = trajectory_path(session_dir)
+    if not path.is_file():
+        return []
+    seen: list[str] = []
+    found: set[str] = set()
+    for raw in _read_events(path):
+        marker = _failure_marker(raw)
+        if marker is None or marker in found:
+            continue
+        found.add(marker)
+        seen.append(marker)
+    return seen
 
 
 def _read_events(path: Path) -> list[dict[str, Any]]:

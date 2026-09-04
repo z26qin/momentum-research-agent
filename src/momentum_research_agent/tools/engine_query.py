@@ -16,6 +16,7 @@ from momentum_research_agent.tools.engine_adapter import (
     load_engine_state,
 )
 from momentum_research_agent.tools.engine_contract import attach_delivery_contract
+from momentum_research_agent.tools.engine_pipeline import run_monitor_assessment
 from momentum_research_agent.tools.local_dm import score_local_dm
 from momentum_research_agent.tools.registry import get_tool_context, register_tool
 
@@ -59,12 +60,14 @@ def _project_root() -> Path | None:
     description=(
         "Query the deterministic momentum tail-risk engine for Daniel–Moskowitz "
         "risk state (normal | bear_low_volatility | panic_elevated), mechanical "
-        "unwind regime, and crowding overlays. Reads momentum-tail-risk-monitor "
-        "JSON snapshots when available (MOMENTUM_ENGINE_DIR or a sibling checkout). "
-        "If no snapshot exists, runs a local Daniel–Moskowitz scorer on SPY + ticker "
-        "closes (24m bear market + 6m vol → risk_state; 1m drawdown → unwind). "
-        "Each payload includes delivery_contract V_D (pass | pass_with_caveats | fail). "
-        "Labeled mock only if both snapshot and local scorer are unavailable."
+        "unwind regime, and crowding overlays. Prefers a live PIT run of "
+        "momentum-tail-risk-monitor (`scripts/run_monitor.py` via MOMENTUM_ENGINE_DIR "
+        "or a sibling checkout) when the snapshot as_of does not match. Matching "
+        "JSON snapshots are used as a fast path. If neither exists, runs a local "
+        "Daniel–Moskowitz scorer on SPY + ticker closes (24m bear market + 6m vol "
+        "→ risk_state; 1m drawdown → unwind). Each payload includes delivery_contract "
+        "V_D (pass | pass_with_caveats | fail). Labeled mock only if snapshot, "
+        "pipeline, and local scorer are all unavailable."
     ),
     parameters={
         "type": "object",
@@ -87,7 +90,17 @@ def _project_root() -> Path | None:
 )
 async def engine_query(ticker: str, start: str | None = None, end: str | None = None) -> str:
     live = load_engine_state(ticker, start, end, project_root=_project_root())
-    payload = live
+    payload = live if live is not None and live.get("as_of_match", True) else None
+    if payload is None:
+        payload = await asyncio.to_thread(
+            run_monitor_assessment,
+            ticker,
+            start,
+            end,
+            project_root=_project_root(),
+        )
+    if payload is None and live is not None:
+        payload = live
     if payload is None:
         payload = await asyncio.to_thread(score_local_dm, ticker, start, end)
     if payload is None:
@@ -96,10 +109,10 @@ async def engine_query(ticker: str, start: str | None = None, end: str | None = 
             start,
             end,
             reason=(
-                "MOCK DATA — no momentum-tail-risk-monitor snapshot and local DM "
-                "scorer had no prices. Labels use the same Daniel–Moskowitz "
+                "MOCK DATA — no momentum-tail-risk-monitor snapshot, pipeline run, "
+                "or local DM prices. Labels use the same Daniel–Moskowitz "
                 "vocabulary, but values are synthetic. Set MOMENTUM_ENGINE_DIR "
-                "or allow yfinance for the local scorer."
+                "to a monitor checkout (scripts/run_monitor.py) or allow yfinance."
             ),
         )
     return json.dumps(attach_delivery_contract(payload, requested_end=end), indent=2)

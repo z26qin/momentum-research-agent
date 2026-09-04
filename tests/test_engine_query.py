@@ -17,6 +17,7 @@ from momentum_research_agent.tools.engine_query import engine_query
 def _isolate_engine_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(tmp_path / "missing-engine"))
     monkeypatch.setenv("MOMENTUM_DISABLE_LOCAL_DM", "1")
+    monkeypatch.setenv("MOMENTUM_DISABLE_PIPELINE", "1")
     monkeypatch.delenv("MOMENTUM_ENGINE_SNAPSHOT", raising=False)
 
 
@@ -94,7 +95,7 @@ async def test_engine_query_uses_local_dm_when_no_snapshot(
     assert payload["source"] == "local_dm"
     assert payload["risk_state"] == "panic_elevated"
     assert payload["regime"] == "UNWIND"
-    assert payload["delivery_contract"]["verdict"] == "pass"
+    assert payload["delivery_contract"]["verdict"] == "pass_with_caveats"
 
 
 @pytest.mark.asyncio

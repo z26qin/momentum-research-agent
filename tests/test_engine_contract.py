@@ -6,7 +6,24 @@ from momentum_research_agent.tools.engine_contract import (
 )
 
 
-def test_complete_snapshot_passes() -> None:
+def test_complete_live_pipeline_passes() -> None:
+    payload = {
+        "ticker": "NVDA",
+        "as_of": "2026-05-29",
+        "source": "momentum-tail-risk-monitor",
+        "risk_state": "normal",
+        "regime": "FRAGILITY_BUILDING",
+        "crowding_score": 0.96,
+        "as_of_match": True,
+        "pipeline_run": True,
+    }
+    contract = grade_engine_payload(payload, requested_end="2026-05-29")
+    assert contract.verdict == "pass"
+    assert contract.missing == []
+    assert contract.invalid == []
+
+
+def test_file_snapshot_is_caveat() -> None:
     payload = {
         "ticker": "NVDA",
         "as_of": "2026-05-29",
@@ -17,9 +34,8 @@ def test_complete_snapshot_passes() -> None:
         "as_of_match": True,
     }
     contract = grade_engine_payload(payload, requested_end="2026-05-29")
-    assert contract.verdict == "pass"
-    assert contract.missing == []
-    assert contract.invalid == []
+    assert contract.verdict == "pass_with_caveats"
+    assert any("snapshot adapter" in item for item in contract.caveats)
 
 
 def test_mock_is_caveat_not_fail() -> None:

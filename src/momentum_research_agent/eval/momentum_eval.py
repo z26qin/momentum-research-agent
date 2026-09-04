@@ -82,7 +82,7 @@ CASES: tuple[EvalCase, ...] = (
         expect_source="momentum-tail-risk-monitor",
         expect_risk_state="normal",
         expect_regime="FRAGILITY_BUILDING",
-        expect_contract="pass",
+        expect_contract="pass_with_caveats",
         expect_as_of_match=True,
     ),
     EvalCase(
@@ -118,7 +118,7 @@ CASES: tuple[EvalCase, ...] = (
         expect_source="momentum-tail-risk-monitor",
         expect_risk_state="panic_elevated",
         expect_regime="UNWIND",
-        expect_contract="pass",
+        expect_contract="pass_with_caveats",
     ),
     EvalCase(
         id="local_dm_panic_unwind",
@@ -139,6 +139,24 @@ CASES: tuple[EvalCase, ...] = (
         expect_source="local_dm",
         expect_risk_state="panic_elevated",
         expect_regime="UNWIND",
+        expect_contract="pass_with_caveats",
+    ),
+    EvalCase(
+        id="pipeline_live_run",
+        end="2026-05-29",
+        payload={
+            "ticker": "NVDA",
+            "as_of": "2026-05-29",
+            "source": "momentum-tail-risk-monitor",
+            "risk_state": "normal",
+            "regime": "FRAGILITY_BUILDING",
+            "crowding_score": 0.96,
+            "as_of_match": True,
+            "pipeline_run": True,
+        },
+        expect_source="momentum-tail-risk-monitor",
+        expect_risk_state="normal",
+        expect_regime="FRAGILITY_BUILDING",
         expect_contract="pass",
     ),
 )

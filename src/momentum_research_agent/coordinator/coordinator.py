@@ -23,7 +23,7 @@ from momentum_research_agent.coordinator.followup import (
     is_followup_task,
 )
 from momentum_research_agent.coordinator.gap_tasks import MAX_GAP_SEED_TASKS, gap_task_specs
-from momentum_research_agent.coordinator.replan import already_replanned, replan_specs
+from momentum_research_agent.coordinator.replan import already_replanned, engine_failure_replan_specs, replan_specs
 from momentum_research_agent.coordinator.task_board import TaskBoard
 from momentum_research_agent.models.schemas import (
     AgentRunResult,
@@ -223,15 +223,19 @@ class Coordinator:
             refresh_profile_hints(self.project_root, self.session_dir)
 
     async def replan_blocked(self) -> bool:
-        """One extra dispatch for BLOCKED runtime failures. Not follow-up, not GAP."""
+        """One extra dispatch for BLOCKED runtime or live engine-delivery failures."""
         if already_replanned(self.board.tasks):
             return False
         specs = replan_specs(self.board.blocked, self.board.question, max_tasks=1)
+        reason = "BLOCKED work"
+        if not specs:
+            specs = engine_failure_replan_specs(
+                self.session_dir, self.board.question, max_tasks=1
+            )
+            reason = "mock/stale/V_D engine failure"
         if not specs:
             return False
-        self.console.print(
-            f"[bold]Replan[/bold] — {len(specs)} task(s) for BLOCKED work"
-        )
+        self.console.print(f"[bold]Replan[/bold] — {len(specs)} task(s) for {reason}")
         for spec in specs:
             self.board.add_task(
                 spec.title,

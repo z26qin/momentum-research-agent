@@ -2,7 +2,8 @@
 
 The adapter still reads snapshots, not a live PIT pipeline. This grader
 says whether a payload is usable as Daniel–Moskowitz risk state for
-crowding / unwind / crash work.
+crowding / unwind / crash work. A live `run_monitor.py` assessment can
+pass; file snapshots, local_dm, and mock cannot pass without caveats.
 """
 
 from __future__ import annotations
@@ -58,6 +59,12 @@ def grade_engine_payload(
             invalid.append("source")
         elif source == "mock":
             caveats.append("source=mock; values are synthetic, not a live engine run")
+        elif source == "local_dm":
+            caveats.append("source=local_dm; not a PIT parquet pipeline run")
+        elif source == "momentum-tail-risk-monitor" and not payload.get("pipeline_run"):
+            caveats.append(
+                "file snapshot adapter; not a live run_monitor.py PIT run"
+            )
 
     risk_state = payload.get("risk_state")
     if "risk_state" in payload:

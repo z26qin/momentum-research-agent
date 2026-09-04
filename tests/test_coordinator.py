@@ -461,3 +461,42 @@ async def test_replan_retries_blocked_task(
     blocked = [task for task in coordinator.board.tasks if task.status.value == "BLOCKED"]
     assert len(blocked) == 1
     assert await coordinator.replan_blocked() is False
+
+
+@pytest.mark.asyncio
+async def test_replan_retries_mock_engine_trajectory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from momentum_research_agent.state.trajectory import append_tool_event
+
+    session_dir = tmp_path / "session"
+    client = FakeClient([DECOMPOSE, SYNTHESIS])
+    coordinator = Coordinator(
+        session_dir=session_dir,
+        client=client,  # type: ignore[arg-type]
+        question="Is the NVDA selloff a crash?",
+        project_root=tmp_path,
+        usage_tracker=UsageSummary(),
+    )
+
+    async def fake_run(self, task, tools, session_dir):
+        if task.kind is TaskKind.RESEARCH:
+            append_tool_event(
+                session_dir,
+                agent=task.profile,
+                tool="engine_query",
+                arguments={"ticker": "NVDA"},
+                result="MOCK DATA — no momentum-tail-risk-monitor snapshot found.",
+                task_id=task.id,
+            )
+        result = _run_result(task, 10, 5)
+        persist_research_report(session_dir, task, result.report)
+        return result
+
+    _patch_runtime(monkeypatch, fake_run)
+    await coordinator.run("Is the NVDA selloff a crash?")
+    replans = [task for task in coordinator.board.tasks if task.kind is TaskKind.REPLAN]
+    assert len(replans) == 1
+    assert replans[0].status.value == "COMPLETED"
+    assert "mock_engine" in replans[0].assignment
+    assert await coordinator.replan_blocked() is False

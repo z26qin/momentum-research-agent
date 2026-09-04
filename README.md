@@ -2,7 +2,7 @@
 
 Multi-agent investigation system for US equity momentum tail-risk. A coordinator decomposes a research question, runs independent analyst sub-agents in parallel, and synthesizes a structured PM brief.
 
-This is an original, purpose-built orchestration layer. It sits on top of a deterministic momentum tail-risk engine (Daniel–Moskowitz risk state, FINRA/GDELT overlays, triggered evidence). `engine_query` reads JSON snapshots from `momentum-tail-risk-monitor` when that repo (or `MOMENTUM_ENGINE_DIR`) is available, otherwise runs a local DM scorer on SPY + ticker closes, and falls back to labeled mock data only if prices are unavailable.
+This is an original, purpose-built orchestration layer. It sits on top of a deterministic momentum tail-risk engine (Daniel–Moskowitz risk state, FINRA/GDELT overlays, triggered evidence). `engine_query` runs `scripts/run_monitor.py` in `momentum-tail-risk-monitor` when that checkout is available and the snapshot as_of is stale or missing, otherwise reads JSON snapshots, otherwise runs a local DM scorer on SPY + ticker closes, and falls back to labeled mock data only if prices are unavailable.
 
 ## Architecture
 
@@ -15,7 +15,7 @@ Coordinator (deepseek-reasoner)
    ├─ gap seed  → at most two kind=gap tasks from reports/gap_ledger.jsonl
    ├─ dispatch  → bounded SubAgents in parallel (deepseek-chat, ReAct + allowlisted tools)
    │                └─ ResearchReport { findings: Evidence[], summary, status }
-   ├─ replan    → at most one kind=replan task if a research task is BLOCKED
+   ├─ replan    → at most one kind=replan task if a research task is BLOCKED or engine_query was mock/stale/V_D fail
    ├─ verify    → independent Verifier (static audit + ReAct re-check of Evidence[])
    ├─ follow-up → at most one extra dispatch on rejected/unchecked evidence
    └─ synthesize → reports/{session}/synthesis.md
@@ -73,7 +73,7 @@ Each sub-agent is capped by `LoopBudget`: 8 ReAct turns, 45s overall deadline, 2
 
 After verification, the coordinator may dispatch at most one extra follow-up round (default 2 tasks) for `rejected` / `unchecked` evidence, then re-verify once. Verified items are not reopened. `--mode single` does not follow up.
 
-Separately, open rows in `gap_ledger.jsonl` may become up to two `kind=gap` tasks at the *start* of the next run. That is the next-session seed, not a second in-session loop. After the first dispatch wave, at most one `kind=replan` task may retry a BLOCKED runtime failure.
+Separately, open rows in `gap_ledger.jsonl` may become up to two `kind=gap` tasks at the *start* of the next run. That is the next-session seed, not a second in-session loop. After the first dispatch wave, at most one `kind=replan` task may retry a BLOCKED runtime failure or a mock/stale/`V_D`-fail engine_query.
 
 `--eval` grades frozen Daniel–Moskowitz / crowding / unwind fixtures (including delivery contract `V_D`) and appends failures to `reports/gap_ledger.jsonl`. It does not call DeepSeek.
 
@@ -83,7 +83,7 @@ Separately, open rows in `gap_ledger.jsonl` may become up to two `kind=gap` task
 | --- | --- |
 | `web_search` | Serper, then Tavily. Clear error if neither key is set. |
 | `file_reader` | `.md` `.txt` `.csv` (first 100 rows) `.json`. Refuses paths outside the project. |
-| `engine_query` | Prefers `momentum-tail-risk-monitor` snapshots; else a local DM scorer on SPY + ticker closes; labeled mock only if both fail. Attaches `delivery_contract` `V_D`. |
+| `engine_query` | Prefers a live `scripts/run_monitor.py` PIT run when the snapshot as_of is missing/stale; matching JSON snapshots are a fast path; else a local DM scorer on SPY + ticker closes; labeled mock only if all three fail. Attaches `delivery_contract` `V_D`. Live pipeline can `pass`; snapshots/`local_dm`/mock cannot. |
 | `market_data` | yfinance OHLCV table (period default `3mo`). |
 | `shell` | Implemented but **not** assigned to research profiles. Not used in normal flows. |
 

@@ -75,6 +75,10 @@ def test_refresh_profile_hints_from_ledger_and_traces(tmp_path: Path) -> None:
     assert "Runtime retrieval hints" in hints
     assert "unwind" in hints.lower()
     assert "mock_engine" in hints
+    assert "Evolved retrieval rules" in hints
+    evolution = (tmp_path / "reports" / "prompt_evolution.json").read_text(encoding="utf-8")
+    assert "unwind_crash" in evolution
+    assert "mock_engine" in evolution
 
 
 def test_load_profile_appends_hints(tmp_path: Path) -> None:

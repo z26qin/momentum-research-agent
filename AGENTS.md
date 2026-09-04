@@ -13,7 +13,7 @@ TaskBoard  (+ optional GAP tasks from reports/gap_ledger.jsonl)
    ↓
 parallel SubAgents  (+ reports/profile_hints.md overlay)
    ↓
-optional one-task replan if a research task is BLOCKED
+optional one-task replan if BLOCKED or engine_query was mock/stale/V_D fail
    ↓
 Evidence[] / ResearchReport JSON  +  trajectory.jsonl + traces.jsonl
    ↓
@@ -32,17 +32,18 @@ Coordinator synthesis
 
 Follow-up is one bounded extra dispatch (default max 2 tasks) using the original analyst profiles. It does not reopen verified items, does not loop, and is skipped on a session that already has `kind=followup` tasks or a completed synthesis. AgentBus is still out of scope.
 
-Replan is a different one-shot: after the first dispatch wave, if a task is BLOCKED at runtime, the Coordinator may add at most one `kind=replan` replacement and dispatch it. That is not a second follow-up and not an AgentBus.
+Replan is a different one-shot: after the first dispatch wave, if a task is BLOCKED at runtime **or** this session's `engine_query` was mock / stale / `V_D` fail, the Coordinator may add at most one `kind=replan` replacement and dispatch it. That is not a second follow-up and not an AgentBus.
 
 Cross-session gaps are different: after verification, rejected/unchecked claims are appended to `reports/gap_ledger.jsonl`. The *next* run may seed at most 2 `kind=gap` tasks from open rows, then mark those rows consumed. Decompose also sees a `failure_brief` of open/recent gaps. That is not a second follow-up round inside the same session.
 
-`engine_query` prefers JSON artifacts from `momentum-tail-risk-monitor` (`MOMENTUM_ENGINE_DIR`, `MOMENTUM_ENGINE_SNAPSHOT`, or a sibling checkout). If none exist, it runs a local Daniel–Moskowitz scorer on SPY + ticker closes (24m bear + 6m vol → `risk_state`; 1m drawdown → unwind regime). Labeled mock only if prices are unavailable. Every payload includes a delivery contract `V_D` (`pass` | `pass_with_caveats` | `fail`). Frozen eval (`momentum-research-agent --eval`) grades DM/crowding/unwind fixtures — including the local scorer — and appends failures to the ledger.
+`engine_query` prefers a live PIT run of `momentum-tail-risk-monitor` (`scripts/run_monitor.py` via `MOMENTUM_ENGINE_DIR` or a sibling checkout) when the JSON snapshot as_of does not match. Matching snapshots are a fast path. If neither exists, it runs a local Daniel–Moskowitz scorer on SPY + ticker closes (24m bear + 6m vol → `risk_state`; 1m drawdown → unwind regime). Labeled mock only if prices are unavailable. Every payload includes a delivery contract `V_D` (`pass` | `pass_with_caveats` | `fail`). File snapshots and `local_dm` cannot `pass` without caveats; a live pipeline run can. Frozen eval (`momentum-research-agent --eval`) grades DM/crowding/unwind fixtures — including the pipeline contract — and appends failures to the ledger.
 
 ## Artifacts
 
 ```
 reports/gap_ledger.jsonl                 # cross-session rejected/unchecked claims
 reports/profile_hints.md                 # generated overlay from ledger + traces
+reports/prompt_evolution.json            # capability/trace rules used in that overlay
 reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/
   task_board.json
   trajectory.jsonl                       # all tool calls (preview)

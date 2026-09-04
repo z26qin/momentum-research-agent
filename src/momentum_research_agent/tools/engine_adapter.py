@@ -2,7 +2,9 @@
 
 The engine is a PIT parquet pipeline, not a ticker API. This adapter maps
 existing JSON snapshots (latest_assessment, structured_snapshot, evidence
-cards) into the engine_query contract. Missing files fall back to mock.
+cards) into the engine_query contract. A live `scripts/run_monitor.py`
+subprocess is preferred when the snapshot as_of does not match. Missing
+files fall back to local_dm / mock. Do not import that package.
 """
 
 from __future__ import annotations
@@ -20,6 +22,16 @@ MECHANICAL_UNWIND_REGIMES = ("QUIET", "FRAGILITY_BUILDING", "UNWIND")
 _EMPTY = (None, "", [], {})
 
 
+def looks_like_engine(path: Path | None) -> bool:
+    if path is None or not path.is_dir():
+        return False
+    return (
+        (path / "scripts" / "run_monitor.py").is_file()
+        or (path / "outputs").is_dir()
+        or (path / "data" / "processed").is_dir()
+    )
+
+
 def resolve_engine_root(project_root: Path | None = None) -> Path | None:
     """Return the engine repo root, or None to keep engine_query on mock data.
 
@@ -30,18 +42,19 @@ def resolve_engine_root(project_root: Path | None = None) -> Path | None:
     raw = os.environ.get("MOMENTUM_ENGINE_DIR", "").strip()
     if raw:
         path = Path(raw).expanduser()
-        return path if path.is_dir() else None
+        return path if looks_like_engine(path) else None
     snapshot = os.environ.get("MOMENTUM_ENGINE_SNAPSHOT", "").strip()
     if snapshot:
         file_path = Path(snapshot).expanduser()
         if file_path.is_file():
-            return file_path.parent
-        if file_path.is_dir():
+            parent = file_path.parent
+            return parent if looks_like_engine(parent) or file_path.is_file() else None
+        if looks_like_engine(file_path):
             return file_path
         return None
     root = Path(project_root) if project_root is not None else find_project_root()
     sibling = root.parent / "momentum-tail-risk-monitor"
-    if sibling.is_dir() and (sibling / "outputs").is_dir():
+    if looks_like_engine(sibling):
         return sibling
     return None
 
@@ -136,6 +149,7 @@ def normalize_engine_payload(
     *,
     start: str | None = None,
     end: str | None = None,
+    pipeline_run: bool = False,
 ) -> dict[str, Any]:
     symbol = ticker.upper()
     as_of = artifact_as_of(path, payload) or end
@@ -148,10 +162,16 @@ def normalize_engine_payload(
     scores = _mechanism_scores(payload)
     mentions = _ticker_mentions(payload, symbol)
     stale = bool(requested and as_of and requested != as_of)
-    note_parts = [
-        "File adapter over momentum-tail-risk-monitor outputs; this is not a live pipeline run.",
-        "Engine state is market/book level, not a single-name forecast.",
-    ]
+    if pipeline_run:
+        note_parts = [
+            "Live PIT assessment via momentum-tail-risk-monitor scripts/run_monitor.py.",
+            "Engine state is market/book level, not a single-name forecast.",
+        ]
+    else:
+        note_parts = [
+            "File adapter over momentum-tail-risk-monitor outputs; this is not a live pipeline run.",
+            "Engine state is market/book level, not a single-name forecast.",
+        ]
     if stale:
         note_parts.append(
             f"Requested as_of={requested} was not an exact match; using snapshot as_of={as_of}."
@@ -169,6 +189,7 @@ def normalize_engine_payload(
         "as_of": as_of,
         "source": "momentum-tail-risk-monitor",
         "source_path": str(path),
+        "pipeline_run": pipeline_run,
         "scope": "market_or_book",
         "as_of_match": not stale,
         "risk_state": dm_state,
