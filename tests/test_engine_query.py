@@ -73,7 +73,7 @@ async def test_engine_query_without_end_resolves_as_of_and_runs_pipeline(
             {
                 "as_of_date": as_of,
                 "overall_risk_state": "normal",
-                "full_run_fingerprint": "abc",
+                "full_run_fingerprint": "abcd1234efgh5678",
                 "mechanical_unwind_state": "QUIET",
             },
             None,
@@ -92,6 +92,8 @@ async def test_engine_query_without_end_resolves_as_of_and_runs_pipeline(
     assert payload["pipeline_run"] is True
     assert payload["delivery_contract"]["verdict"] == "pass"
     assert payload["delivery_contract"]["requested_as_of"] == "2026-06-30"
+    assert payload["delivery_hash"]
+    assert payload["delivery_contract"]["delivery_hash"] == payload["delivery_hash"]
     assert payload["end_resolved"] is True
     assert "resolved latest as-of" in payload["note"]
 

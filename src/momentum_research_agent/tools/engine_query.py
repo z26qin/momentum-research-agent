@@ -23,7 +23,7 @@ from momentum_research_agent.tools.engine_adapter import (
 from momentum_research_agent.tools.engine_contract import (
     attach_contract,
     not_pass,
-    pipeline_pass,
+    verify_live_delivery,
 )
 from momentum_research_agent.tools.engine_pipeline import (
     QUERY_TIMEOUT_S,
@@ -144,33 +144,14 @@ async def engine_query(ticker: str, start: str | None = None, end: str | None = 
                     f"{payload.get('note', '')} end was omitted; "
                     f"resolved latest as-of {requested}."
                 ).strip()
-            as_of = str(run.assessment.get("as_of_date") or "")[:10]
-            stale = bool(requested and as_of and requested != as_of)
             implied_note = (
                 [f"end omitted; resolved latest as-of {requested}."] if implied else []
             )
-            if stale:
-                contract = not_pass(
-                    verdict="pass_with_caveats",
-                    source="run_mvp",
-                    as_of=as_of,
-                    requested_as_of=requested,
-                    pipeline_run=True,
-                    notes=[
-                        "run_mvp as_of did not match the requested date.",
-                        *implied_note,
-                    ],
-                )
-            else:
-                contract = pipeline_pass(
-                    as_of=as_of,
-                    requested_as_of=requested,
-                    fingerprint=str(run.assessment.get("full_run_fingerprint") or "") or None,
-                    notes=[
-                        "State produced by live run_mvp via scripts/run_monitor.py.",
-                        *implied_note,
-                    ],
-                )
+            contract = verify_live_delivery(
+                run.assessment,
+                requested,
+                extra_notes=implied_note,
+            )
             return json.dumps(attach_contract(payload, contract), indent=2)
 
     if forced_missing:

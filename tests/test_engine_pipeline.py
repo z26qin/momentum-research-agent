@@ -165,6 +165,8 @@ async def test_engine_query_pipeline_pass_and_ignores_poisoned_snapshot(
         assert payload["pipeline_run"] is True
         assert payload["delivery_contract"]["verdict"] == "pass"
         assert payload["delivery_contract"]["source"] == "run_mvp"
+        assert payload["delivery_contract"]["delivery_hash"]
+        assert payload["delivery_hash"] == payload["delivery_contract"]["delivery_hash"]
         assert payload["risk_state"] == "normal"
         assert payload["source"] == "run_mvp"
         assert "does not read structured_snapshot.json" in payload.get("note", "")
