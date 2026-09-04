@@ -108,3 +108,49 @@ def test_failure_brief_lists_open_then_consumed(tmp_path: Path) -> None:
     assert "CONSUMED crowding" in brief
     assert "e2" in brief
     assert "e1" in brief
+
+
+def test_session_engine_mock_and_unanswered_feed_cross_session_ledger(
+    tmp_path: Path,
+) -> None:
+    from momentum_research_agent.models.schemas import GapEntry, GapKind
+
+    path = tmp_path / "gap_ledger.jsonl"
+    report = VerificationReport(
+        question="Is this a crash?",
+        overall_status="fail",
+        summary="session ledger",
+        verdicts=[
+            EvidenceVerdict(
+                evidence_id="e1",
+                claim="crowding is elevated",
+                status=VerificationStatus.REJECTED,
+            )
+        ],
+        gaps=[
+            GapEntry(
+                kind=GapKind.REJECTED_EVIDENCE,
+                claim="crowding is elevated",
+                evidence_id="e1",
+            ),
+            GapEntry(
+                kind=GapKind.ENGINE_MOCK,
+                claim="engine_query(NVDA) returned labeled mock data.",
+                notes="no snapshot",
+            ),
+            GapEntry(
+                kind=GapKind.UNANSWERED_QUESTION,
+                claim="Does FINRA SI confirm the crowding print?",
+            ),
+        ],
+    )
+    written = append_from_verification(path, report, "sess-a")
+    ids = {item.evidence_id for item in written}
+    assert "e1" in ids
+    assert any(item.startswith("engine_mock:") for item in ids)
+    assert any(item.startswith("unanswered:") for item in ids)
+    caps = {item.capability for item in written}
+    assert GapCapability.CROWDING in caps
+    assert GapCapability.ENGINE_FRESHNESS in caps
+    # rejected gap row is not duplicated from verdicts
+    assert sum(1 for item in written if item.evidence_id == "e1") == 1

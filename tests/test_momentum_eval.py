@@ -36,6 +36,13 @@ def test_eval_failures_append_to_ledger(tmp_path: Path) -> None:
     assert len(gaps) == 1
     assert gaps[0].evidence_id == "eval:broken_payload_fails_vd"
     assert "V_D" in gaps[0].claim
+    from momentum_research_agent.models.schemas import GapCapability
+    from momentum_research_agent.coordinator.gap_tasks import gap_task_specs
+
+    assert gaps[0].capability is GapCapability.ENGINE_FRESHNESS
+    specs = gap_task_specs("Is this a crash?", gaps, max_tasks=2)
+    assert specs and specs[0].kind.value == "gap"
+    assert "eval:broken_payload_fails_vd" in specs[0].evidence_ids
     # open rows are not duplicated
     assert _append_failures(
         tmp_path,

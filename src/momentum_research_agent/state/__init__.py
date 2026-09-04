@@ -1,4 +1,5 @@
 from momentum_research_agent.state.gap_ledger import (
+    append_from_session_gaps,
     append_from_verification,
     failure_brief,
     ledger_path,
@@ -31,6 +32,7 @@ from momentum_research_agent.state.trajectory import (
 )
 
 __all__ = [
+    "append_from_session_gaps",
     "append_from_verification",
     "append_jsonl",
     "append_tool_event",

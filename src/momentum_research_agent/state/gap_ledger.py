@@ -14,6 +14,8 @@ from momentum_research_agent.config import reports_root
 from momentum_research_agent.models.schemas import (
     EvidenceCategory,
     GapCapability,
+    GapEntry,
+    GapKind,
     GapRecord,
     GapState,
     ResearchReport,
@@ -142,6 +144,75 @@ def append_from_verification(
             profile=profile,
             notes=verdict.notes,
             issues=list(verdict.issues),
+        )
+        append_jsonl(path, record.model_dump(mode="json"))
+        existing[record.evidence_id] = record
+        written.append(record)
+    extra = append_from_session_gaps(path, verification, session_id, reports, existing=existing)
+    written.extend(extra)
+    return written
+
+
+_KIND_STATUS = {
+    GapKind.REJECTED_EVIDENCE: VerificationStatus.REJECTED,
+    GapKind.UNCHECKED_EVIDENCE: VerificationStatus.UNCHECKED,
+    GapKind.MISSING_EVIDENCE: VerificationStatus.UNCHECKED,
+    GapKind.UNANSWERED_QUESTION: VerificationStatus.UNCHECKED,
+    GapKind.ENGINE_MOCK: VerificationStatus.UNCHECKED,
+}
+_VERDICT_KINDS = frozenset({GapKind.REJECTED_EVIDENCE, GapKind.UNCHECKED_EVIDENCE})
+
+
+def session_gap_evidence_id(gap: GapEntry) -> str:
+    if gap.evidence_id:
+        return gap.evidence_id
+    if gap.kind is GapKind.ENGINE_MOCK:
+        return f"engine_mock:{gap.id}"
+    if gap.kind is GapKind.UNANSWERED_QUESTION:
+        return f"unanswered:{gap.id}"
+    if gap.kind is GapKind.MISSING_EVIDENCE:
+        return f"missing:{gap.id}"
+    return gap.id
+
+
+def append_from_session_gaps(
+    path: Path,
+    verification: VerificationReport,
+    session_id: str,
+    reports: dict[str, ResearchReport] | None = None,
+    *,
+    existing: dict[str, GapRecord] | None = None,
+) -> list[GapRecord]:
+    """Persist ENGINE_MOCK / unanswered / missing session gaps across runs.
+
+    Rejected/unchecked evidence rows are already written from verdicts.
+    """
+    reports = reports or {}
+    existing = existing if existing is not None else load_ledger(path)
+    written: list[GapRecord] = []
+    for gap in verification.gaps:
+        if gap.kind in _VERDICT_KINDS:
+            continue
+        evidence_id = session_gap_evidence_id(gap)
+        prior = existing.get(evidence_id)
+        if prior is not None and prior.state is GapState.OPEN:
+            continue
+        profile = None
+        if gap.task_id and gap.task_id in reports:
+            profile = reports[gap.task_id].agent_role
+        extra = "engine mock snapshot" if gap.kind is GapKind.ENGINE_MOCK else ""
+        record = GapRecord(
+            evidence_id=evidence_id,
+            claim=gap.claim,
+            status=_KIND_STATUS.get(gap.kind, VerificationStatus.UNCHECKED),
+            capability=classify_gap(
+                gap.claim, f"{gap.notes} {extra}", [gap.kind.value]
+            ),
+            session_id=session_id,
+            task_id=gap.task_id,
+            profile=profile,
+            notes=gap.notes or gap.kind.value,
+            issues=[gap.kind.value, *gap.trace_ids],
         )
         append_jsonl(path, record.model_dump(mode="json"))
         existing[record.evidence_id] = record

@@ -206,7 +206,10 @@ def _append_failures(project_root: Path, results: list[EvalResult]) -> int:
     verdicts = [
         EvidenceVerdict(
             evidence_id=f"eval:{item.case_id}",
-            claim="Momentum eval " + item.case_id + " failed: " + "; ".join(item.reasons),
+            claim=(
+                f"engine snapshot / V_D eval {item.case_id} failed: "
+                + "; ".join(item.reasons)
+            ),
             status=VerificationStatus.UNCHECKED,
             notes="frozen engine/V_D eval",
             issues=list(item.reasons),
