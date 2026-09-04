@@ -188,6 +188,18 @@ CASES: tuple[EvalCase, ...] = (
         expect_as_of_match=True,
         expect_pipeline_run=True,
     ),
+    EvalCase(
+        id="bundled_pipeline_replay_2026_06_30",
+        ticker="SMH",
+        end="2026-06-30",
+        via_query=True,
+        expect_source="momentum-tail-risk-monitor",
+        expect_risk_state="normal",
+        expect_regime="FRAGILITY_BUILDING",
+        expect_contract="pass",
+        expect_as_of_match=True,
+        expect_pipeline_run=True,
+    ),
 )
 
 
@@ -196,6 +208,9 @@ def run_eval(project_root: Path, *, write_ledger: bool = True) -> EvalSummary:
     written = 0
     if write_ledger:
         written = _append_failures(project_root, results)
+        from momentum_research_agent.state.prompt_memory import refresh_profile_hints
+
+        refresh_profile_hints(project_root)
     return EvalSummary(results=results, written=written)
 
 
@@ -213,6 +228,16 @@ def _engine_query_payload(
     set_tool_context(ToolContext(project_root=root, session_dir=session_dir))
     clear_pipeline_cache()
     raw = asyncio.run(engine_query(ticker, end=end))
+    from momentum_research_agent.state.trajectory import append_tool_event
+
+    append_tool_event(
+        session_dir,
+        agent="eval",
+        tool="engine_query",
+        arguments={"ticker": ticker, "end": end},
+        result=raw,
+        task_id="eval",
+    )
     return json.loads(raw)
 
 

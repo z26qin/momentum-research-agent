@@ -65,6 +65,57 @@ def test_refresh_profile_hints_from_ledger_and_traces(tmp_path: Path) -> None:
     evolution = (tmp_path / "reports" / "prompt_evolution.json").read_text(encoding="utf-8")
     assert "unwind_crash" in evolution
     assert "mock_engine" in evolution
+    assert "learned" in evolution
+    assert "engine_query(NVDA, end=unspecified)" in hints
+    from json import loads
+
+    payload = loads(evolution)
+    assert any(item.get("source") == "trajectory" for item in payload["learned"])
+
+
+def test_learned_rules_persist_and_drop_closed_gaps(tmp_path: Path) -> None:
+    from momentum_research_agent.coordinator.gap_seed import load_rows, write_rows
+    from momentum_research_agent.models.schemas import GapLedgerStatus
+    from momentum_research_agent.state.persistence import load_json
+    from momentum_research_agent.state.prompt_memory import evolution_path
+
+    append_gaps(
+        tmp_path,
+        [
+            GapEntry(
+                kind=GapKind.UNCHECKED_EVIDENCE,
+                claim="crowding still elevated in SMH",
+                evidence_id="crowd-1",
+            )
+        ],
+        session_id="sess-a",
+    )
+    prior = tmp_path / "reports" / "20260101_120000_deadbeef"
+    prior.mkdir(parents=True)
+    append_tool_event(
+        prior,
+        agent="momentum_analyst",
+        tool="engine_query",
+        arguments={"ticker": "NVDA", "end": "2026-08-01"},
+        result='{"as_of_match": false, "note": "stale"}',
+        task_id="abcd",
+    )
+    refresh_profile_hints(tmp_path)
+    hints = load_profile_hints(tmp_path)
+    assert "engine_query(NVDA, end=2026-08-01) had as_of_match=false" in hints
+    assert "Open crowding gap crowd-1" in hints
+    learned = load_json(evolution_path(tmp_path))["learned"]
+    keys = {item["key"] for item in learned}
+    assert "trace:stale_as_of:NVDA:2026-08-01" in keys
+    assert "gap:crowd-1" in keys
+
+    rows = load_rows(tmp_path)
+    rows[0].status = GapLedgerStatus.CLOSED
+    write_rows(tmp_path, rows)
+    refresh_profile_hints(tmp_path)
+    hints = load_profile_hints(tmp_path)
+    assert "Open crowding gap crowd-1" not in hints
+    assert "engine_query(NVDA, end=2026-08-01) had as_of_match=false" in hints
 
 
 def test_load_profile_appends_hints(tmp_path: Path) -> None:

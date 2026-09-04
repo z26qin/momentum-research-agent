@@ -49,7 +49,7 @@ Cross-session gaps are different: after verification, rejected/unchecked claims 
 ```
 reports/gap_ledger.jsonl                 # cross-session OPEN/CONSUMED/CLOSED gaps
 reports/profile_hints.md                 # generated overlay from ledger + traces
-reports/prompt_evolution.json            # capability/trace rules used in that overlay
+reports/prompt_evolution.json            # canned + learned ticker/date rules used in that overlay
 reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/
   task_board.json
   trajectory.jsonl                       # all tool calls (preview)

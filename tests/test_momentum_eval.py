@@ -6,6 +6,7 @@ import pytest
 
 from momentum_research_agent.eval.momentum_eval import (
     CASES,
+    EvalCase,
     EvalResult,
     _append_failures,
     run_eval,
@@ -39,10 +40,42 @@ def test_eval_failures_append_to_ledger(tmp_path: Path) -> None:
     ) == 0
 
 
+def test_eval_writeback_refreshes_learned_hints(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from momentum_research_agent.eval import momentum_eval as mod
+    from momentum_research_agent.state.prompt_memory import load_profile_hints
+    from momentum_research_agent.state.persistence import load_json
+    from momentum_research_agent.state.prompt_memory import evolution_path
+
+    monkeypatch.setattr(
+        mod,
+        "CASES",
+        (
+            EvalCase(
+                id="broken_payload_fails_vd",
+                payload={"ticker": "NVDA", "source": "mock"},
+                expect_contract="pass",
+            ),
+        ),
+    )
+    summary = run_eval(tmp_path, write_ledger=True)
+    assert summary.failed == 1
+    assert summary.written == 1
+    hints = load_profile_hints(tmp_path)
+    assert "Open engine_freshness gap eval:broken_payload_fails_vd" in hints
+    learned = load_json(evolution_path(tmp_path))["learned"]
+    assert any(item["key"] == "gap:eval:broken_payload_fails_vd" for item in learned)
+
+
 def test_eval_includes_bundled_snapshot_case() -> None:
     assert any(case.id == "bundled_snapshot_2026_05_29" and case.bundled for case in CASES)
     assert any(
         case.id == "bundled_pipeline_replay" and case.via_query for case in CASES
+    )
+    assert any(
+        case.id == "bundled_pipeline_replay_2026_06_30" and case.via_query
+        for case in CASES
     )
 
 
