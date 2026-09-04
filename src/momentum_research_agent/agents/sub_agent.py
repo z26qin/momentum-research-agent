@@ -35,7 +35,17 @@ from momentum_research_agent.tools.registry import (
 OnProgress = Callable[[str, int, int], None]
 
 
-def load_profile(profile: str, project_root: Path) -> str:
+def load_profile(
+    profile: str,
+    project_root: Path,
+    *,
+    apply_overlay: bool = True,
+) -> str:
+    """Load a frozen profile. Overlay is for research profiles only.
+
+    Verifier must call with apply_overlay=False so OPEN-gap / eval rules
+    cannot leak into the independent checker.
+    """
     name = profile.removesuffix(".md")
     candidates = [
         project_root / "profiles" / f"{name}.md",
@@ -44,6 +54,8 @@ def load_profile(profile: str, project_root: Path) -> str:
     for path in candidates:
         if path.exists():
             text = path.read_text(encoding="utf-8")
+            if not apply_overlay:
+                return text
             overlay = overlay_text(project_root)
             if overlay:
                 return f"{text.rstrip()}\n\n{overlay}\n"

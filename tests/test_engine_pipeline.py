@@ -10,6 +10,7 @@ from momentum_research_agent.config import find_project_root
 from momentum_research_agent.tools.engine_adapter import resolve_engine_root as adapter_resolve
 from momentum_research_agent.tools.engine_pipeline import (
     WARM_TIMEOUT_S,
+    resolve_as_of,
     resolve_engine_root,
     resolve_pipeline_root,
     run_pipeline,
@@ -27,6 +28,28 @@ def live_engine(monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.delenv("MOMENTUM_ENGINE_SNAPSHOT", raising=False)
     set_tool_context(ToolContext(project_root=find_project_root(), session_dir=None))
     return ENGINE
+
+
+def test_resolve_as_of_uses_requested_then_latest_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine = tmp_path / "engine"
+    (engine / "scripts").mkdir(parents=True)
+    (engine / "scripts" / "run_monitor.py").write_text("# stub\n", encoding="utf-8")
+    cache = engine / "outputs" / "pipeline_runs"
+    cache.mkdir(parents=True)
+    (cache / "2026-05-29.json").write_text(
+        json.dumps({"as_of_date": "2026-05-29", "overall_risk_state": "normal"}),
+        encoding="utf-8",
+    )
+    (cache / "2026-06-30.json").write_text(
+        json.dumps({"as_of_date": "2026-06-30", "overall_risk_state": "normal"}),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("MOMENTUM_DISABLE_PIPELINE", raising=False)
+    monkeypatch.setenv("MOMENTUM_ENGINE_DIR", str(engine))
+    assert resolve_as_of("2026-05-29", project_root=tmp_path) == "2026-05-29"
+    assert resolve_as_of(None, project_root=tmp_path) == "2026-06-30"
 
 
 def test_adapter_and_pipeline_share_resolve_engine_root() -> None:

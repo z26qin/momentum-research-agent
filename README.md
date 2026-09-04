@@ -16,7 +16,7 @@ Coordinator (deepseek-reasoner)
    ├─ engine warm → subprocess run_mvp cache (~90s)
    ├─ dispatch  → bounded SubAgents in parallel (deepseek-chat, ReAct + allowlisted tools)
    │                └─ ResearchReport { findings: Evidence[], summary, status }
-   ├─ replan    → at most one kind=replan (BLOCKED / mock / stale / V_D fail)
+   ├─ replan    → at most one kind=replan (BLOCKED / mock / V_D fail)
    ├─ verify    → independent Verifier (static audit + ReAct re-check of Evidence[])
    ├─ append    → verification.gaps → reports/gap_ledger.jsonl (OPEN / CONSUMED / CLOSED)
    ├─ follow-up → at most one extra dispatch on rejected/unchecked evidence
@@ -73,7 +73,7 @@ Each run writes `reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/`, plus a cross-sessio
 
 Each sub-agent is capped by `LoopBudget`: 8 ReAct turns, 45s overall deadline, 20s per LLM call, 10s per tool. Cancellation (`asyncio.CancelledError`) propagates. Unknown analyst profiles and off-allowlist tools fail closed. `shell` is not part of normal research capabilities.
 
-After verification, the coordinator may dispatch at most one extra follow-up round (default 2 tasks) for `rejected` / `unchecked` evidence, then re-verify once. Verified items are not reopened. `--mode single` does not follow up. After the first dispatch wave, at most one `kind=replan` may run for BLOCKED tasks or a mock/stale/V_D-fail `engine_query`. That is not a second follow-up.
+After verification, the coordinator may dispatch at most one extra follow-up round (default 2 tasks) for `rejected` / `unchecked` evidence, then re-verify once. Verified items are not reopened. `--mode single` does not follow up. After the first dispatch wave, at most one `kind=replan` may run for BLOCKED tasks or a labeled-mock / V_D-fail `engine_query`. File snapshot and local_dm do not replan. That is not a second follow-up. `engine_query` without `end` resolves the latest known as-of and still runs the live pipeline.
 
 The next session may plant at most 2 `kind=gap` tasks from `reports/gap_ledger.jsonl` after decompose (`crowding` → `flow_analyst`, unwind/engine → `momentum_analyst`). After that session verifies the planted tasks, rows become `CLOSED` or go back to `OPEN`. That is not a second follow-up.
 

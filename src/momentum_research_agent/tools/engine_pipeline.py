@@ -75,6 +75,46 @@ def pipeline_cache_path(root: Path, as_of: str) -> Path:
     return root / "outputs" / "pipeline_runs" / f"{as_of}.json"
 
 
+def resolve_as_of(
+    requested: str | None,
+    *,
+    project_root: Path | None = None,
+) -> str | None:
+    """Return an explicit as-of. Omitted `end` becomes the latest known date.
+
+    Prefer cached pipeline runs, then latest_assessment.json, then the newest
+    frozen PIT date when a live pipeline root exists. None means there is no
+    engine world to date — caller should fail closed into snapshot/mock.
+    """
+    if requested:
+        return requested[:10]
+    root = resolve_engine_root(project_root)
+    dates: list[str] = []
+    if root is not None:
+        cache_dir = root / "outputs" / "pipeline_runs"
+        if cache_dir.is_dir():
+            dates.extend(
+                path.stem
+                for path in cache_dir.glob("????-??-??.json")
+                if _load_cached(path, path.stem) is not None
+            )
+        latest = root / "outputs" / "latest_assessment.json"
+        if latest.is_file():
+            try:
+                payload = json.loads(latest.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                payload = None
+            if isinstance(payload, dict):
+                as_of = str(payload.get("as_of_date") or "")[:10]
+                if as_of:
+                    dates.append(as_of)
+    if dates:
+        return max(dates)
+    if resolve_pipeline_root(project_root) is not None:
+        return max(FROZEN_AS_OF)
+    return None
+
+
 def _load_cached(path: Path, as_of: str) -> dict | None:
     if not path.is_file():
         return None

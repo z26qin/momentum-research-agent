@@ -1,7 +1,8 @@
 """At most one kind=replan after the first dispatch wave.
 
 Not a second follow-up and not AgentBus. Triggers: BLOCKED tasks, or this
-session's engine_query was mock / stale / V_D fail. Reads traces.jsonl only.
+session's engine_query was labeled mock or V_D fail. File snapshot /
+local_dm / pass_with_caveats do not replan. Reads traces.jsonl only.
 """
 
 from __future__ import annotations
@@ -34,14 +35,10 @@ def session_engine_needs_replan(session_dir: Path) -> bool:
             continue
         if not isinstance(payload, dict):
             continue
-        if payload.get("source") in {"mock", "local_dm"}:
-            return True
-        if payload.get("as_of_match") is False:
+        if payload.get("source") == "mock":
             return True
         contract = payload.get("delivery_contract")
         if isinstance(contract, dict) and contract.get("verdict") == "fail":
-            return True
-        if payload.get("pipeline_run") is not True:
             return True
     return False
 
@@ -56,10 +53,11 @@ def should_replan(tasks: list[Task], session_dir: Path) -> bool:
 
 def replan_assignment(question: str) -> str:
     return (
-        "Replan after the first dispatch wave. A task was BLOCKED or this "
-        "session's engine_query was mock, stale, or V_D failed. "
-        "Call engine_query with an explicit end=YYYY-MM-DD (prefer 2026-05-29 "
-        "or 2026-06-30). Require pipeline_run=true and delivery_contract.verdict=pass "
-        "from live run_mvp. This is not an in-session follow-up.\n\n"
+        "Replan after the first dispatch wave. A task was BLOCKED or "
+        "engine_query returned labeled mock or V_D fail. "
+        "Revise the remaining work: name the as-of you will use, call "
+        "engine_query with that explicit end, and treat file_snapshot / "
+        "local_dm / mock as insufficient for a pass. Do not retry the same "
+        "call that already failed. This is not an in-session follow-up.\n\n"
         f"Research question:\n{question}"
     )

@@ -17,7 +17,7 @@ engine warm (subprocess run_mvp, ~90s cache)
    ↓
 parallel SubAgents
    ↓
-optional one kind=replan (BLOCKED / mock / stale / V_D fail)
+   optional one kind=replan (BLOCKED / mock / V_D fail)
    ↓
 bounded ReAct runtime
    ↓
@@ -44,7 +44,7 @@ Coordinator synthesis
 
 After verify, those `gaps[]` are appended to the cross-session file `reports/gap_ledger.jsonl` (deduped by `evidence_id`, status `OPEN` / `CONSUMED` / `CLOSED`). The next session classifies each row as `crowding` / `unwind_crash` / `engine_freshness` / `source_quality`. After decompose and before dispatch, `seed_from_ledger()` plants at most 2 `kind=gap` tasks (`crowding` → `flow_analyst`, unwind/engine → `momentum_analyst`) and marks those rows `CONSUMED`. After this session verifies those planted tasks, the same rows become `CLOSED` (VERIFIED / no longer `ENGINE_MOCK`) or go back to `OPEN` (still rejected / unchecked / mock). This is not a second follow-up and not AgentBus.
 
-Follow-up is one bounded extra dispatch (default max 2 tasks) using the original analyst profiles. It does not reopen verified items, does not loop, and is skipped on a session that already has `kind=followup` tasks or a completed synthesis. After the first dispatch wave, at most one `kind=replan` may run (BLOCKED, or this session's `engine_query` was mock / stale / V_D fail). Replan is not follow-up and not AgentBus.
+Follow-up is one bounded extra dispatch (default max 2 tasks) using the original analyst profiles. It does not reopen verified items, does not loop, and is skipped on a session that already has `kind=followup` tasks or a completed synthesis. After the first dispatch wave, at most one `kind=replan` may run (BLOCKED, or this session's `engine_query` was labeled mock or V_D fail). File snapshot / local_dm / `pass_with_caveats` do not replan. Replan is not follow-up and not AgentBus. `engine_query` without `end` resolves the latest known as-of and still runs the live pipeline. Overlay (`profile_hints.md`) is appended only to research profiles; `Verifier` loads with `apply_overlay=False`.
 
 `engine_query` prefers a **live** `run_mvp` via subprocess:
 
@@ -52,14 +52,14 @@ Follow-up is one bounded extra dispatch (default max 2 tasks) using the original
 python scripts/run_monitor.py --as-of-date YYYY-MM-DD --output-json …
 ```
 
-Path: `require_cached_inputs()` → `run_compact_assessment()` → `run_mvp()` reading `data/processed/*.parquet`. This repo must not `from src.mvp import` or `import momentum_crash`. One `resolve_engine_root`: `MOMENTUM_ENGINE_DIR` / a sibling checkout wins when present; otherwise the vendored PIT pack at `fixtures/engine` (commit `99b0688`). If `MOMENTUM_ENGINE_DIR` is set to a missing path, do not fall back to the bundle. File snapshots use that same root and cannot `delivery_contract.verdict=pass`. Only `pipeline_run=True` from live `run_mvp` can. Query timeout ~8s; Coordinator warm ~90s. `--eval` calls `engine_query(end="2026-05-29")` with no DeepSeek and writes failures as `eval:{case_id}` into the gap ledger plus `reports/prompt_evolution.json` / `profile_hints.md`. Committed `profiles/*.md` stay frozen; overlays are runtime-only. Replan and overlay read `traces.jsonl`; there is no second tool log.
+Path: `require_cached_inputs()` → `run_compact_assessment()` → `run_mvp()` reading `data/processed/*.parquet`. This repo must not `from src.mvp import` or `import momentum_crash`. One `resolve_engine_root`: `MOMENTUM_ENGINE_DIR` / a sibling checkout wins when present; otherwise the vendored PIT pack at `fixtures/engine` (commit `99b0688`). If `MOMENTUM_ENGINE_DIR` is set to a missing path, do not fall back to the bundle. File snapshots use that same root and cannot `delivery_contract.verdict=pass`. Only `pipeline_run=True` from live `run_mvp` can. Query timeout ~8s; Coordinator warm ~90s. `--eval` calls `engine_query(end="2026-05-29")` with no DeepSeek and writes failures as `eval:{case_id}` into the gap ledger plus `reports/prompt_evolution.json` / `profile_hints.md`. Committed `profiles/*.md` stay frozen; overlays are runtime-only and are not applied to `Verifier`. Replan and overlay read `traces.jsonl`; there is no second tool log.
 
 ## Artifacts
 
 ```
 reports/gap_ledger.jsonl                  # cross-session OPEN/CONSUMED/CLOSED gaps
 reports/prompt_evolution.json             # runtime overlay rules (not weight training)
-reports/profile_hints.md                  # appended to frozen profiles at load time
+reports/profile_hints.md                  # appended to research profiles only; verifier skips it
 reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/
   task_board.json
   sub_reports/{task_id}_{profile}.json    # source of truth

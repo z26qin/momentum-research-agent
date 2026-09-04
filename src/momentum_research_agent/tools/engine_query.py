@@ -25,7 +25,11 @@ from momentum_research_agent.tools.engine_contract import (
     not_pass,
     pipeline_pass,
 )
-from momentum_research_agent.tools.engine_pipeline import QUERY_TIMEOUT_S, run_pipeline
+from momentum_research_agent.tools.engine_pipeline import (
+    QUERY_TIMEOUT_S,
+    resolve_as_of,
+    run_pipeline,
+)
 from momentum_research_agent.tools.local_dm import score_local_dm
 from momentum_research_agent.tools.registry import get_tool_context, register_tool
 
@@ -111,7 +115,10 @@ def _from_assessment(
             },
             "end": {
                 "type": "string",
-                "description": "Optional as-of date YYYY-MM-DD used to select a snapshot.",
+                "description": (
+                    "As-of date YYYY-MM-DD. If omitted, the latest known as-of "
+                    "is resolved and the live pipeline still runs."
+                ),
             },
         },
         "required": ["ticker"],
@@ -119,7 +126,8 @@ def _from_assessment(
 )
 async def engine_query(ticker: str, start: str | None = None, end: str | None = None) -> str:
     project_root = _project_root()
-    requested = end
+    requested = resolve_as_of(end, project_root=project_root)
+    implied = end is None and requested is not None
     forced_missing = _engine_dir_forced_missing()
     if requested and not forced_missing:
         run = await asyncio.to_thread(
@@ -129,9 +137,18 @@ async def engine_query(ticker: str, start: str | None = None, end: str | None = 
             timeout_s=QUERY_TIMEOUT_S,
         )
         if run.ok and run.assessment is not None:
-            payload = _from_assessment(run.assessment, ticker, start, end, run.root)
+            payload = _from_assessment(run.assessment, ticker, start, requested, run.root)
+            if implied:
+                payload["end_resolved"] = True
+                payload["note"] = (
+                    f"{payload.get('note', '')} end was omitted; "
+                    f"resolved latest as-of {requested}."
+                ).strip()
             as_of = str(run.assessment.get("as_of_date") or "")[:10]
             stale = bool(requested and as_of and requested != as_of)
+            implied_note = (
+                [f"end omitted; resolved latest as-of {requested}."] if implied else []
+            )
             if stale:
                 contract = not_pass(
                     verdict="pass_with_caveats",
@@ -139,20 +156,29 @@ async def engine_query(ticker: str, start: str | None = None, end: str | None = 
                     as_of=as_of,
                     requested_as_of=requested,
                     pipeline_run=True,
-                    notes=["run_mvp as_of did not match the requested date."],
+                    notes=[
+                        "run_mvp as_of did not match the requested date.",
+                        *implied_note,
+                    ],
                 )
             else:
                 contract = pipeline_pass(
                     as_of=as_of,
                     requested_as_of=requested,
                     fingerprint=str(run.assessment.get("full_run_fingerprint") or "") or None,
+                    notes=[
+                        "State produced by live run_mvp via scripts/run_monitor.py.",
+                        *implied_note,
+                    ],
                 )
             return json.dumps(attach_contract(payload, contract), indent=2)
 
     if forced_missing:
         live = None
     else:
-        live = load_engine_state(ticker, start, end, project_root=project_root)
+        live = load_engine_state(
+            ticker, start, requested or end, project_root=project_root
+        )
     if live is not None:
         stale = live.get("as_of_match") is False
         contract = not_pass(
