@@ -44,6 +44,7 @@ class TaskKind(str, Enum):
     RESEARCH = "research"
     FOLLOWUP = "followup"
     GAP = "gap"
+    REPLAN = "replan"
 
 
 class InvalidTransition(ValueError):

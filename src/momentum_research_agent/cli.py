@@ -73,6 +73,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show full tool-call details.",
     )
+    parser.add_argument(
+        "--eval",
+        action="store_true",
+        dest="run_eval",
+        help="Run frozen DM eval (no DeepSeek). Writes failures to the gap ledger.",
+    )
     return parser
 
 
@@ -189,6 +195,22 @@ async def async_main(args: argparse.Namespace) -> int:
     console = Console()
     project_root = find_project_root()
     load_env(project_root)
+
+    if getattr(args, "run_eval", False):
+        from momentum_research_agent.eval.momentum_eval import run_eval
+
+        results = await run_eval(project_root)
+        failed = [item for item in results if not item["ok"]]
+        for item in results:
+            status = "ok" if item["ok"] else "FAIL"
+            console.print(f"[bold]eval {item['case_id']}[/bold] {status}")
+            if item.get("error"):
+                console.print(f"  {item['error']}")
+        if failed:
+            console.print(f"[red]{len(failed)} eval case(s) wrote gap-ledger rows[/red]")
+            return 1
+        console.print("[green]eval passed (live run_mvp V_D)[/green]")
+        return 0
 
     if not args.resume and not args.question:
         console.print("[red]A research question is required unless --resume is set.[/red]")

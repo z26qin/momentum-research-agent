@@ -1,8 +1,7 @@
-"""Read momentum-tail-risk-monitor artifacts without importing that package.
+"""Map JSON snapshots into the engine_query contract. Cannot V_D pass.
 
-The engine is a PIT parquet pipeline, not a ticker API. This adapter maps
-existing JSON snapshots (latest_assessment, structured_snapshot, evidence
-cards) into the engine_query contract. Missing files fall back to mock.
+Uses the shared resolve_engine_root. Does not search for a second monitor
+checkout. Live run_mvp is the only pass path.
 """
 
 from __future__ import annotations
@@ -12,38 +11,12 @@ import os
 from pathlib import Path
 from typing import Any
 
-from momentum_research_agent.config import find_project_root
+from momentum_research_agent.tools.engine_pipeline import resolve_engine_root
 
 DM_PRIMARY_STATES = ("normal", "bear_low_volatility", "panic_elevated")
 DM_BEAR_STATES = frozenset({"bear_low_volatility", "panic_elevated"})
 MECHANICAL_UNWIND_REGIMES = ("QUIET", "FRAGILITY_BUILDING", "UNWIND")
 _EMPTY = (None, "", [], {})
-
-
-def resolve_engine_root(project_root: Path | None = None) -> Path | None:
-    """Return the engine repo root, or None to keep engine_query on mock data.
-
-    `MOMENTUM_ENGINE_DIR` wins. If it is set but missing, do not silently
-    fall back to a sibling checkout. Otherwise look for
-    `../momentum-tail-risk-monitor` next to this project.
-    """
-    raw = os.environ.get("MOMENTUM_ENGINE_DIR", "").strip()
-    if raw:
-        path = Path(raw).expanduser()
-        return path if path.is_dir() else None
-    snapshot = os.environ.get("MOMENTUM_ENGINE_SNAPSHOT", "").strip()
-    if snapshot:
-        file_path = Path(snapshot).expanduser()
-        if file_path.is_file():
-            return file_path.parent
-        if file_path.is_dir():
-            return file_path
-        return None
-    root = Path(project_root) if project_root is not None else find_project_root()
-    sibling = root.parent / "momentum-tail-risk-monitor"
-    if sibling.is_dir() and (sibling / "outputs").is_dir():
-        return sibling
-    return None
 
 
 def iter_engine_artifacts(root: Path) -> list[Path]:
@@ -108,6 +81,7 @@ def load_engine_state(
     *,
     project_root: Path | None = None,
 ) -> dict[str, Any] | None:
+    """Read a JSON snapshot from the shared engine root. Cannot V_D pass."""
     as_of = end
     explicit = os.environ.get("MOMENTUM_ENGINE_SNAPSHOT", "").strip()
     if explicit:
@@ -117,6 +91,15 @@ def load_engine_state(
             if payload is None:
                 return None
             return normalize_engine_payload(payload, ticker, path, start=start, end=end)
+        if path.is_dir():
+            chosen = select_engine_artifact(path, as_of=as_of)
+            if chosen is None:
+                return None
+            payload = _read_json(chosen)
+            if payload is None:
+                return None
+            return normalize_engine_payload(payload, ticker, chosen, start=start, end=end)
+        return None
     root = resolve_engine_root(project_root)
     if root is None:
         return None
