@@ -39,6 +39,7 @@ class TaskStatus(str, Enum):
 class TaskKind(str, Enum):
     RESEARCH = "research"
     FOLLOWUP = "followup"
+    GAP = "gap"
 
 
 class InvalidTransition(ValueError):
@@ -219,6 +220,36 @@ class VerificationRunResult(BaseModel):
     report: VerificationReport
     usage: UsageSummary = Field(default_factory=UsageSummary)
     tool_calls: int = 0
+
+
+class GapCapability(str, Enum):
+    CROWDING = "crowding"
+    UNWIND_CRASH = "unwind_crash"
+    ENGINE_FRESHNESS = "engine_freshness"
+    SOURCE_QUALITY = "source_quality"
+    OTHER = "other"
+
+
+class GapState(str, Enum):
+    OPEN = "open"
+    CONSUMED = "consumed"
+
+
+class GapRecord(BaseModel):
+    """One rejected/unchecked claim in the cross-session momentum gap ledger."""
+
+    evidence_id: str
+    claim: str
+    status: VerificationStatus
+    capability: GapCapability = GapCapability.OTHER
+    session_id: str
+    task_id: str | None = None
+    profile: str | None = None
+    notes: str = ""
+    issues: list[str] = Field(default_factory=list)
+    state: GapState = GapState.OPEN
+    consumed_by: str | None = None
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 def extract_json_text(text: str) -> str:

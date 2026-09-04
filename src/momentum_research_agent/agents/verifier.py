@@ -21,6 +21,7 @@ from momentum_research_agent.models.schemas import (
     parse_model_json,
 )
 from momentum_research_agent.state.reports import persist_verification_report
+from momentum_research_agent.state.trajectory import append_tool_event
 from momentum_research_agent.tools import authorize_tools
 from momentum_research_agent.tools.registry import (
     ToolContext,
@@ -113,6 +114,13 @@ class Verifier:
         def _on_tool(name: str, arguments: dict, result: str) -> None:
             nonlocal tool_calls
             tool_calls += 1
+            append_tool_event(
+                session_dir,
+                agent=VERIFIER_PROFILE,
+                tool=name,
+                arguments=arguments,
+                result=result,
+            )
             if self.verbose and self.console is not None:
                 preview = result if len(result) < 240 else result[:240] + "…"
                 self.console.print(f"[dim]verifier · {name}({arguments}) → {preview}[/dim]")

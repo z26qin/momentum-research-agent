@@ -54,10 +54,13 @@ Each run writes `reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/`:
 | File | Purpose |
 | --- | --- |
 | `task_board.json` | Full task history with timestamps |
+| `trajectory.jsonl` | Tool calls for this session (replay raw material) |
 | `sub_reports/{task_id}_{profile}.json` | Canonical `ResearchReport` (Evidence[]) |
 | `sub_reports/{task_id}_{profile}.md` | Human-readable rendering of the same report |
 | `verification.json` / `verification.md` | Independent Evidence[] audit |
 | `synthesis.md` / `synthesis.json` | Final PM brief |
+
+Rejected/unchecked claims are also appended to `reports/gap_ledger.jsonl` (cross-session). The next team run may seed at most two `kind=gap` tasks from open rows.
 
 `--resume` reloads JSON reports first. Markdown-only leftovers from older sessions become a low-confidence compatibility report.
 

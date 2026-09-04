@@ -9,23 +9,17 @@ Question
    ↓
 Coordinator
    ↓
-TaskBoard
+TaskBoard  (+ optional GAP tasks from reports/gap_ledger.jsonl)
    ↓
-parallel SubAgents
+parallel SubAgents  → session trajectory.jsonl
    ↓
-bounded ReAct runtime
+Evidence[] / ResearchReport JSON
    ↓
-explicit authorized tools
+independent Verifier
    ↓
-Evidence[]
+append rejected/unchecked to gap_ledger.jsonl
    ↓
-ResearchReport JSON
-   ↓
-independent Verifier  (static audit + bounded ReAct re-check)
-   ↓
-optional one-round follow-up  (rejected / unchecked only)
-   ↓
-VerificationReport JSON
+optional one-round follow-up
    ↓
 Coordinator synthesis
 ```
@@ -34,13 +28,17 @@ Coordinator synthesis
 
 Follow-up is one bounded extra dispatch (default max 2 tasks) using the original analyst profiles. It does not reopen verified items, does not loop, and is skipped on a session that already has `kind=followup` tasks or a completed synthesis. AgentBus is still out of scope.
 
+Cross-session gaps are different: after verification, rejected/unchecked claims are appended to `reports/gap_ledger.jsonl`. The *next* run may seed at most 2 `kind=gap` tasks from open rows, then mark those rows consumed. That is not a second follow-up round inside the same session.
+
 `engine_query` reads JSON artifacts from `momentum-tail-risk-monitor` (`MOMENTUM_ENGINE_DIR`, `MOMENTUM_ENGINE_SNAPSHOT`, or a sibling checkout). It does not import or run that pipeline. No snapshot → labeled mock.
 
 ## Artifacts
 
 ```
+reports/gap_ledger.jsonl                 # cross-session rejected/unchecked claims
 reports/{YYYYMMDD}_{HHmmss}_{8-char-hex}/
   task_board.json
+  trajectory.jsonl                       # tool calls for this session
   sub_reports/{task_id}_{profile}.json    # source of truth
   sub_reports/{task_id}_{profile}.md      # human rendering
   verification.json                      # independent Evidence[] audit
@@ -112,4 +110,4 @@ Do not hit the live DeepSeek API in unit tests.
 
 ## What not to build here
 
-No AgentBus, SpawnGuard, verifier-of-the-verifier, web UI, Docker, database, MCP server, or extra agent frameworks. Follow-up research is the one bounded round above — do not turn it into an unbounded loop.
+No AgentBus, SpawnGuard, verifier-of-the-verifier, web UI, Docker, database, MCP server, or extra agent frameworks. Follow-up research is the one bounded round above — do not turn it into an unbounded loop. The gap ledger only seeds the next session, and is capped.

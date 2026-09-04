@@ -338,3 +338,43 @@ async def test_follow_up_dispatches_once_for_unchecked_evidence(
     # second follow-up must not spawn
     followed_again = await coordinator.follow_up()
     assert followed_again is False
+
+
+def test_seed_from_ledger_consumes_open_gaps(tmp_path: Path) -> None:
+    from momentum_research_agent.models.schemas import TaskKind
+    from momentum_research_agent.state.gap_ledger import (
+        append_from_verification,
+        ledger_path,
+        open_gaps,
+    )
+
+    coordinator = Coordinator(
+        session_dir=tmp_path / "session",
+        client=FakeClient([]),  # type: ignore[arg-type]
+        question="Is this a crash?",
+        project_root=tmp_path,
+        sub_model="deepseek-chat",
+        coordinator_model_name="deepseek-reasoner",
+        max_sub_agents=4,
+    )
+    append_from_verification(
+        ledger_path(tmp_path),
+        VerificationReport(
+            question="prior",
+            overall_status="fail",
+            summary="prior",
+            verdicts=[
+                EvidenceVerdict(
+                    evidence_id="gap1",
+                    claim="crowding still elevated",
+                    status=VerificationStatus.REJECTED,
+                )
+            ],
+        ),
+        "prior-session",
+    )
+    created = coordinator.seed_from_ledger()
+    assert len(created) == 1
+    assert created[0].kind is TaskKind.GAP
+    assert created[0].title.startswith("Gap:")
+    assert open_gaps(ledger_path(tmp_path)) == []

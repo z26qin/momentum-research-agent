@@ -22,6 +22,7 @@ from momentum_research_agent.coordinator.followup import (
     followup_specs,
     is_followup_task,
 )
+from momentum_research_agent.coordinator.gap_tasks import MAX_GAP_SEED_TASKS, gap_task_specs
 from momentum_research_agent.coordinator.task_board import TaskBoard
 from momentum_research_agent.models.schemas import (
     AgentRunResult,
@@ -35,6 +36,12 @@ from momentum_research_agent.models.schemas import (
     VerificationReport,
     parse_model_json,
     utcnow,
+)
+from momentum_research_agent.state.gap_ledger import (
+    append_from_verification,
+    ledger_path,
+    mark_consumed,
+    open_gaps,
 )
 from momentum_research_agent.state.persistence import save_text
 from momentum_research_agent.state.reports import (
@@ -89,10 +96,13 @@ class Coordinator:
         self.board.question = question
         self.board.save()
         await self.decompose(question)
+        self.seed_from_ledger()
         await self.dispatch_all()
         await self.verify()
+        self._record_gaps()
         if await self.follow_up():
             await self.verify()
+            self._record_gaps()
         return await self.synthesize()
 
     async def resume(self) -> SynthesisReport:
@@ -109,16 +119,19 @@ class Coordinator:
             ran_dispatch = True
         elif not self.board.tasks:
             await self.decompose(self.board.question)
+            self.seed_from_ledger()
             await self.dispatch_all()
             ran_dispatch = True
         self._load_existing_sub_reports()
         existing_verification = load_verification_report(self.session_dir)
         if ran_dispatch or existing_verification is None:
             await self.verify()
+            self._record_gaps()
         else:
             self.verification = existing_verification
             if self._followup_needs_reverify():
                 await self.verify()
+                self._record_gaps()
         json_path = self.session_dir / "synthesis.json"
         session_complete = (json_path.exists() or synthesis_path.exists()) and not ran_dispatch
         if session_complete:
@@ -129,6 +142,7 @@ class Coordinator:
             return parse_model_json(SynthesisReport, synthesis_path.read_text(encoding="utf-8"))
         if await self.follow_up():
             await self.verify()
+            self._record_gaps()
         return await self.synthesize()
 
     async def decompose(self, question: str) -> list[Task]:
@@ -152,6 +166,49 @@ class Coordinator:
         self.console.print(f"[bold]Decomposition[/bold] — {result.reasoning}\n")
         self.console.print(self.render_board_table())
         return created
+
+    def seed_from_ledger(self) -> list[Task]:
+        remaining = max(0, self.max_sub_agents - len(self.board.pending))
+        specs = gap_task_specs(
+            self.board.question,
+            open_gaps(ledger_path(self.project_root)),
+            max_tasks=min(MAX_GAP_SEED_TASKS, remaining),
+        )
+        if not specs:
+            return []
+        created: list[Task] = []
+        consumed: list[str] = []
+        for spec in specs:
+            created.append(
+                self.board.add_task(
+                    spec.title,
+                    spec.assignment,
+                    spec.profile,
+                    kind=spec.kind,
+                )
+            )
+            consumed.extend(spec.evidence_ids)
+        mark_consumed(ledger_path(self.project_root), consumed, self.board.session_id)
+        self.console.print(
+            f"[bold]Gap seed[/bold] — {len(created)} task(s) from the cross-session ledger"
+        )
+        self.console.print(self.render_board_table())
+        return created
+
+    def _record_gaps(self) -> None:
+        if self.verification is None:
+            return
+        written = append_from_verification(
+            ledger_path(self.project_root),
+            self.verification,
+            self.board.session_id,
+            self.sub_reports,
+        )
+        if written:
+            self.console.print(
+                f"[bold]Gap ledger[/bold] — recorded {len(written)} open gap(s) "
+                f"at {ledger_path(self.project_root)}"
+            )
 
     async def dispatch_all(self) -> None:
         for task in list(self.board.pending):

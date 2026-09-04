@@ -21,6 +21,7 @@ from momentum_research_agent.models.schemas import (
     parse_model_json,
 )
 from momentum_research_agent.state.reports import persist_research_report
+from momentum_research_agent.state.trajectory import append_tool_event
 from momentum_research_agent.tools import authorize_research_tools
 from momentum_research_agent.tools.registry import (
     ToolContext,
@@ -155,6 +156,14 @@ class SubAgent:
         def _on_tool(name: str, arguments: dict, result: str) -> None:
             nonlocal tool_calls
             tool_calls += 1
+            append_tool_event(
+                session_dir,
+                agent=task.profile,
+                tool=name,
+                arguments=arguments,
+                result=result,
+                task_id=task.id,
+            )
             if self.on_progress is not None:
                 self.on_progress(task.id, tool_calls, local_usage.total_tokens)
             if self.verbose and self.console is not None:
