@@ -58,13 +58,15 @@ def test_live_replan_ignores_out_of_scope_prose() -> None:
     pattern = _pattern("live_replan")
     assert re.search(pattern, "class AgentBus:")
     assert re.search(pattern, "async def replan(self):")
+    assert re.search(pattern, "async def replan_blocked(self):")
+    assert re.search(pattern, "def replan_specs():")
     assert re.search(pattern, "def staged_return():")
     assert re.search(pattern, "AgentBus is still out of scope.") is None
     assert re.search(pattern, "there is no AgentBus.") is None
 
 
 def test_training_loop_still_absent_on_head() -> None:
-    """PR #2 does not add this; a hit here means main actually moved toward self-improvement."""
+    """This branch is docs/probe only. A hit here means the scorecard checkout grew product traces."""
     probe = _load_probe()
     summary = probe.summarize(probe.probe("HEAD"))
     assert summary["training_loop"]["present"] == []

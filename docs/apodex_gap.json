@@ -7,8 +7,8 @@
     "not_in_scope": "General-purpose Heavy-Duty Solver, SFT/RL on DeepSeek weights, AgentBus, unbounded follow-up"
   },
   "status_bar": {
-    "main_score": 22,
-    "main_bar": "[████░░░░░░░░░░░░░░░░]",
+    "main_score": 30,
+    "main_bar": "[██████░░░░░░░░░░░░░░]",
     "band": "verified_runtime",
     "implemented_on_main": [
       "disk TaskBoard",
@@ -16,44 +16,49 @@
       "ReAct + tools",
       "independent Verifier + static audit",
       "one-round follow-up",
-      "engine snapshot adapter (mock fallback)"
+      "engine snapshot adapter (mock fallback)",
+      "in-session verification.json gap ledger (gaps[] + traces[])",
+      "traces.jsonl + engine/search replay"
     ],
-    "implemented_not_on_main": [],
+    "implemented_not_on_main": [
+      "PR #3: cross-session gap_ledger.jsonl, GAP seeds, V_D, local DM, run_monitor.py subprocess, replan, prompt_evolution, --eval writeback"
+    ],
     "left": [
-      "cross-session momentum gap ledger",
-      "task factory from gaps",
+      "cross-session momentum gap ledger consumed as next-run GAP tasks",
+      "task factory from classified crowding/unwind/engine gaps",
       "real DM engine + delivery verifier V_D",
       "live replan / staged return / branch stop",
-      "replayable engine/search traces",
+      "prompt/tool evolution from traces",
       "eval that feeds the next loop"
     ]
   },
   "baseline_commit": "ef03fa5a5f7020ff7601b4cc241e8f595a74eddb",
-  "last_reviewed_sha": "5212820ccb54293d7c585ce13b3c4e2a49a1dce2",
-  "last_reviewed_at": "2026-09-04T14:25:00Z",
+  "last_reviewed_sha": "abd007b4798686729766826a4b39f4d2c0b84a3e",
+  "last_reviewed_at": "2026-09-04T16:00:00Z",
   "reference": {
     "paper": "Apodex 1.1: Scaling Agentic Intelligence for Complex Work",
     "arxiv": "https://arxiv.org/html/2608.23283",
     "definition": "Self-evolution is the managed loop: observed gaps → Task Pipeline → Environment Scaling + Agentic Coordination Scaling → SFT/agentic RL → evaluation/failure attribution. It is not the model rewriting its own weights."
   },
   "overall": {
-    "score_0_to_100": 22,
+    "score_0_to_100": 30,
     "band": "verified_runtime",
-    "summary": "PR #2 landed: independent Verifier, one-round follow-up, engine snapshot adapter. Closed-loop second half (gap ledger, task factory, traces) still absent."
+    "summary": "PR #5 landed: in-session verification.json is a replayable momentum gap ledger (gaps[] + traces[]). The loop is still open at the session boundary — next Coordinator.run does not consume those gaps. No V_D, no live replan, no prompt evolution, no eval writeback on main."
   },
   "dimensions": [
     {
       "id": "gap_mining",
       "name": "Capability-gap mining",
-      "score_0_to_100": 15,
+      "score_0_to_100": 28,
       "apodex": "Classify real-task failures, benchmark errors, and user/expert feedback into capability deficiencies.",
       "present": [
         "BLOCKED tasks and Task.error.",
-        "EvidenceVerdict rejected/unchecked is claim-level failure labeling."
+        "EvidenceVerdict rejected/unchecked is claim-level failure labeling.",
+        "verification.json compiles GapKind rows (rejected/unchecked/missing/unanswered/engine_mock) with trace_ids (327738c, agents/ledger.py)."
       ],
       "missing": [
-        "No cross-session momentum capability ledger.",
-        "verification.json is per-session only."
+        "No cross-session reports/gap_ledger.jsonl.",
+        "GapKind is operational, not crowding / unwind_crash / engine_freshness capabilities."
       ]
     },
     {
@@ -66,7 +71,8 @@
         "One-shot decompose from the user question still exists."
       ],
       "missing": [
-        "Follow-up is one repair round, not a factory of new momentum research worlds."
+        "Follow-up is one in-session repair round, not a factory of new momentum research worlds.",
+        "Next run does not seed kind=gap tasks from the session ledger."
       ]
     },
     {
@@ -94,7 +100,8 @@
         "Disk TaskBoard; sub-agent failure does not abort the run."
       ],
       "missing": [
-        "No mid-run shared-plan edits, branch stop, or async human intervention."
+        "No mid-run shared-plan edits, branch stop, or async human intervention.",
+        "No kind=replan after BLOCKED or mock engine."
       ]
     },
     {
@@ -104,7 +111,8 @@
       "apodex": "Narrow verifier attacks a claim + evidence + delivery constraint; does not re-solve the whole problem.",
       "present": [
         "Independent Verifier judges existing evidence_ids only.",
-        "static_audit fail-closed; more_conservative merge with LLM re-check."
+        "static_audit fail-closed; more_conservative merge with LLM re-check.",
+        "Verifier compiles the session ledger (finalize_ledger)."
       ],
       "missing": [
         "No statement-level counterexample attack on crowding/unwind claims."
@@ -113,40 +121,42 @@
     {
       "id": "training_loop",
       "name": "Trajectory learning (SFT / agentic RL or system analogue)",
-      "score_0_to_100": 0,
+      "score_0_to_100": 12,
       "apodex": "Unified SFT then agentic RL (PIVOT-RL) over executable and coordination trajectories. Self-evolution reallocates training effort; it does not let the model edit itself.",
       "present": [
-        "Frozen DeepSeek API client. Models are not trained here."
+        "Frozen DeepSeek API client. Models are not trained here.",
+        "traces.jsonl + ToolTrace + replay_trace for engine_query / web_search (327738c)."
       ],
       "missing": [
-        "No action/observation replay log.",
-        "No prompt/profile/tool evolution from traces."
+        "No prompt/profile/tool evolution from traces.",
+        "All-tool trajectory.jsonl is not on main."
       ]
     },
     {
       "id": "eval_attribution",
       "name": "Evaluation and failure attribution",
-      "score_0_to_100": 18,
+      "score_0_to_100": 20,
       "apodex": "ReAct vs Agent Team eval; capability analysis feeds the next Task Pipeline.",
       "present": [
-        "Unit tests including audit, verifier, followup, engine adapter (no live API)."
+        "Unit tests including audit, verifier, followup, engine adapter, ledger replay (no live API)."
       ],
       "missing": [
-        "No working-capability benchmark; test failures do not enter a gap ledger."
+        "No working-capability benchmark; test/eval failures do not enter a cross-session gap ledger."
       ]
     }
   ],
   "last_probe": {
-    "ran_at": "2026-09-04T14:25:00Z",
+    "ran_at": "2026-09-04T16:00:00Z",
     "command": "python3 scripts/probe_apodex_gap.py origin/main",
     "main": {
       "ref": "origin/main",
-      "sha": "5212820ccb54293d7c585ce13b3c4e2a49a1dce2",
+      "sha": "abd007b4798686729766826a4b39f4d2c0b84a3e",
       "hits": {
         "gap_mining": [
           "task_error_field",
           "blocked_status",
-          "evidence_verdict"
+          "evidence_verdict",
+          "capability_ledger"
         ],
         "task_pipeline": [
           "followup_specs",
@@ -165,31 +175,63 @@
           "static_audit",
           "conservative_merge"
         ],
-        "training_loop": [],
+        "training_loop": [
+          "trajectory_log"
+        ],
         "eval_attribution": [
           "unit_tests",
           "verifier_tests"
         ]
       },
       "still_missing": [
-        "capability_ledger",
         "new_environment_factory",
         "delivery_verifier",
         "live_replan",
-        "trajectory_log",
         "prompt_evolution",
         "working_capability_bench"
       ]
     }
   },
   "nearest_moves": [
-    "Turn verification.json rejected/unchecked into a cross-session momentum gap ledger.",
-    "Live task board: mid-run add/stop/replan (follow-up is still one bounded round).",
-    "Narrow statement review of crowding/unwind claims.",
-    "Upgrade snapshot adapter to a verifiable live DM engine run (V_D).",
-    "Log replayable engine/search traces."
+    "Consume verification.json gaps across sessions: reports/gap_ledger.jsonl and at most two kind=gap tasks on the next run.",
+    "Attach delivery contract V_D and prefer a live scripts/run_monitor.py PIT run over stale JSON / mock.",
+    "Bounded kind=replan after BLOCKED or mock/stale/V_D engine_query (not a second follow-up).",
+    "Evolve retrieval hints from ledger + traces (overlay, not weight training).",
+    "Frozen DM/crowding/unwind eval whose failures append to the ledger."
   ],
   "inbound_prs": [
+    {
+      "number": 5,
+      "url": "https://github.com/z26qin/momentum-research-agent/pull/5",
+      "title": "Turn verification.json into a momentum gap ledger",
+      "head_sha": "327738c",
+      "state": "merged",
+      "scored_at": "2026-09-04T16:00:00Z",
+      "predicted_overall": 30,
+      "predicted_band": "verified_runtime",
+      "note": "Merged to main as abd007b (with #4 duplicate). Official overall 22 → 30. Session ledger only; next run still ignores prior gaps.",
+      "merged_at": "2026-09-04T14:51:41Z"
+    },
+    {
+      "number": 3,
+      "url": "https://github.com/z26qin/momentum-research-agent/pull/3",
+      "title": "Close the momentum loop: ledger memory, V_D, local DM, eval",
+      "head_sha": "20a6be9dbf05e4b39da0f668c2504e65cd458552",
+      "state": "open",
+      "scored_at": "2026-09-04T16:00:00Z",
+      "predicted_overall": 50,
+      "predicted_band": "verified_runtime",
+      "predicted_scores": {
+        "gap_mining": 42,
+        "task_pipeline": 22,
+        "environment_scaling": 45,
+        "coordination_scaling": 42,
+        "asymmetric_verification": 40,
+        "training_loop": 28,
+        "eval_attribution": 32
+      },
+      "note": "Do not promote onto main until merge. Probe 19/21 (missing new_environment_factory, working_capability_bench). Cross-session GAP seeds, V_D, run_monitor.py subprocess, replan_blocked, prompt_hints, --eval writeback. Still not a vendored PIT parquet pipeline."
+    },
     {
       "number": 2,
       "url": "https://github.com/z26qin/momentum-research-agent/pull/2",
@@ -208,16 +250,7 @@
         "training_loop": 0,
         "eval_attribution": 18
       },
-      "confirmed": {
-        "head_sha_unchanged": true,
-        "has_verify_and_follow_up": true,
-        "writes_verification_json": true,
-        "has_loop_budget": true,
-        "has_statement_review": false,
-        "logs_action_observation_trace": false,
-        "react_trajectory_mention": "prompt prose in sub_agent.py only, not a replay log"
-      },
-      "note": "Merged to main as 5212820. Official overall score moved 8 → 22. Training loop remains 0.",
+      "note": "Merged to main as 5212820. Official overall score moved 8 → 22.",
       "merged_at": "2026-09-04T14:24:33Z"
     }
   ],

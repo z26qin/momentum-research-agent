@@ -8,10 +8,10 @@
 
 ```
 目标  Apodex-style closed loop × momentum factor risk only
-main  [████░░░░░░░░░░░░░░░░]  22/100  verified_runtime   SHA 5212820
+main  [██████░░░░░░░░░░░░░░]  30/100  verified_runtime   SHA abd007b
 ```
 
-探针：14 / 21 信号。`python3 scripts/probe_apodex_gap.py origin/main`
+探针：16 / 21 信号。`python3 scripts/probe_apodex_gap.py origin/main`
 
 | | 环节 | main 现在 | 还缺（垂直闭环） |
 | ---: | --- | --- | --- |
@@ -19,20 +19,21 @@ main  [████░░░░░░░░░░░░░░░░]  22/100  ve
 | 2 | 动量环境 | 读 monitor 快照；无快照则 labeled mock | 真 DM 引擎跑批 + 交付合约 \(V_D\) |
 | 3 | 非对称验证 | 独立 Verifier + static audit + conservative merge | crowding/unwind **断言**级 statement review |
 | 4 | 再规划 | 一轮 follow-up（最多 2 任务，只修 REJECTED/UNCHECKED） | 执行中途改共享计划、停支 |
-| 5 | 缺口账本 | evidence 的 rejected/unchecked；仍无跨 session 分类 | 动量能力账本 |
+| 5 | 缺口账本 | **session** `verification.json` `gaps[]`；仍无跨 session 分类消费 | 跨 session 动量能力账本 → 下轮 GAP 任务 |
 | 6 | 任务工厂 | follow-up 从验证失败长修补任务 | 从缺口生成下一批动量研究场景 |
-| 7 | 轨迹学习 | **无** | engine/search 可回放日志 → 进化 prompt/工具 |
-| 8 | 评测回流 | 单测 + verifier tests | 动量研究交付基准，失败进账本 |
+| 7 | 轨迹学习 | `traces.jsonl` + `ToolTrace` 可回放 engine/search | 从轨迹进化 prompt/工具 |
+| 8 | 评测回流 | 单测 + verifier + ledger replay tests | 动量研究交付基准，失败进跨 session 账本 |
 
 ```
-✅ 已在 main（含刚合入的 PR #2）
+✅ 已在 main（含刚合入的 PR #5）
    磁盘 TaskBoard · decompose/dispatch/synthesize
    独立 Verifier（只判 evidence_id）· 一轮 follow-up
-   engine 快照适配器 · verification.json · LoopBudget（轮次/超时）
+   engine 快照适配器 · LoopBudget
+   verification.json gaps[] + traces[] · traces.jsonl · replay_trace
 
 ⬜ 闭环还没做
    跨 session 缺口账本 · 动量任务工厂 · 真引擎 + V_D
-   活的再规划 · action/observation 轨迹 · 评测驱动下一轮
+   活的再规划 · 从轨迹进化 prompt · 评测驱动下一轮
 ```
 
 机器可读：`apodex_gap.json`。
@@ -41,11 +42,11 @@ main  [████░░░░░░░░░░░░░░░░]  22/100  ve
 
 | 字段 | 值 |
 | --- | --- |
-| 评审 SHA | `5212820` *Tighten engine adapter and follow-up after review.* |
+| 评审 SHA | `abd007b` *Merge pull request #5 from z26qin/aaron/momentum-gap-ledger* |
 | 评审时间 | 2026-09-04 |
-| 综合分 | **22 / 100**（verified_runtime） |
-| `main` 上的提交数 | 3 |
-| 刚合入 | [PR #2](https://github.com/z26qin/momentum-research-agent/pull/2) 预估 22，实测探针 14/21，正式分改为 22 |
+| 综合分 | **30 / 100**（verified_runtime） |
+| `main` 上的提交数 | 6 |
+| 刚合入 | [PR #5](https://github.com/z26qin/momentum-research-agent/pull/5)（#4 为重复切片）。探针 16/21。正式分 22→30 |
 
 ## 分维
 
@@ -53,13 +54,13 @@ main  [████░░░░░░░░░░░░░░░░]  22/100  ve
 
 | 维度 | 分 | 已有证据 | 仍缺 |
 | --- | ---: | --- | --- |
-| 能力缺口挖掘 | 15 | `BLOCKED` + `EvidenceVerdict` rejected/unchecked | 无跨 session 动量能力账本 |
-| Task Pipeline | 8 | `followup_specs()` 从验证失败生成最多 2 个修补任务 | 不是新研究场景工厂 |
+| 能力缺口挖掘 | 28 | session `gaps[]`（`GapKind` + `trace_ids`，`327738c` / `agents/ledger.py`） | 无跨 session jsonl，无 crowding/unwind 能力分类 |
+| Task Pipeline | 8 | `followup_specs()` 从验证失败生成最多 2 个修补任务 | 下一轮不消费账本；不是新研究场景工厂 |
 | Environment Scaling | 22 | `engine_adapter` 读 monitor 快照；无快照则 mock | 无 \(V_D\)、不跑 PIT 管道 |
 | Agentic Coordination Scaling | 32 | verify → 一轮 follow-up → re-verify | 无中途再规划、停支、异步介入 |
 | 非对称验证 | 40 | 独立 `Verifier` + static audit + conservative merge | 无 statement-level counterexample |
-| 轨迹学习 | 0 | 无 | 无 action/observation 日志，无 prompt/工具自进化 |
-| 评测归因 | 18 | 单测 + audit/verifier/followup/engine 测试 | 无 working-capability 基准 |
+| 轨迹学习 | 12 | `traces.jsonl` + `ToolTrace` + `replay_trace` | 无 prompt/工具自进化 |
+| 评测归因 | 20 | 单测 + audit/verifier/followup/engine/ledger replay | 失败不进跨 session 账本 |
 
 ## 架构对照（相对论文，不是相对愿望）
 
@@ -69,7 +70,7 @@ main  [████░░░░░░░░░░░░░░░░]  22/100  ve
 CLI → Coordinator.run
         ├─ decompose()
         ├─ dispatch_all()
-        ├─ verify()          独立 Verifier
+        ├─ verify()          独立 Verifier → verification.json gaps[]/traces[]
         ├─ follow_up()       至多一轮，只修 rejected/unchecked
         ├─ verify()          再核一次
         └─ synthesize()
@@ -89,15 +90,19 @@ Apodex 1.1 Agent Team 要把分解写进**活的** task board，并在执行中�
 
 ## 最近能真正动针的下一刀
 
-1. 把 `verification.json` 的 rejected/unchecked 收成跨 session 的动量能力账本。
-2. 让 task board 活起来：中途加/停/改任务（follow-up 仍只是一轮）。
-3. 对 crowding / unwind 断言做更窄的 statement review。
-4. 从读快照升级到可验收的真 DM 引擎跑批（\(V_D\)）。
-5. 记录 engine/search 的可回放轨迹（闭环后半段的原料）。
+1. 把 `verification.json` 的 gaps 收到跨 session 的 `reports/gap_ledger.jsonl`，下轮最多种 2 个 `kind=gap` 任务。
+2. 给 `engine_query` 加交付合约 \(V_D\)，快照 stale 时跑 `scripts/run_monitor.py`。
+3. BLOCKED 或 mock/stale/`V_D` fail 后最多 1 个 `kind=replan`（不是第二轮 follow-up）。
+4. 从账本 + traces 生成 `profile_hints.md` overlay（不是改权重）。
+5. 冻结 DM/crowding/unwind eval，失败写回账本。
 
-1 和 5 不做，闭环后半段（任务工厂、轨迹学习）仍是 0。
+1 不做，闭环在 session 边界仍然断开。5 已有原料（`traces.jsonl`），缺的是消费。
 
 `AGENTS.md` 明确不做：LangChain/LangGraph/CrewAI、Web UI、Docker、数据库、MCP、AgentBus、无界 follow-up、对 DeepSeek 权重做 SFT/RL。
+
+## PR #5 已合入
+
+https://github.com/z26qin/momentum-research-agent/pull/5 于 2026-09-04 合入 `main`（`abd007b`；#4 为同一切片）。`327738c` 增加 `agents/ledger.py`、`ToolTrace`、`traces.jsonl`、`replay_trace`。正式分 22→30。探针 16/21（`capability_ledger` + `trajectory_log`）。下一轮 `Coordinator.run` 仍不读这些 gaps。
 
 ## PR #2 已合入
 
@@ -111,23 +116,23 @@ https://github.com/z26qin/momentum-research-agent/pull/2 于 2026-09-04 合入 `
 4. 同步改 `apodex_gap.json` 的 `last_reviewed_sha`、`last_reviewed_at`、`last_probe` 和对应 `dimensions[].score_0_to_100`。
 5. 在下面追加一行历史，不要改写旧行。
 
-## Probe 快照（2026-09-04）
+## Probe 快照（2026-09-04 16:00 UTC）
 
 可复跑：`python3 scripts/probe_apodex_gap.py origin/main`
 
 | 维度 | main 命中 | 仍缺 |
 | --- | --- | --- |
-| 缺口挖掘 | Task + BLOCKED + EvidenceVerdict | capability_ledger |
+| 缺口挖掘 | Task + BLOCKED + EvidenceVerdict + capability_ledger | — |
 | Task Pipeline | followup_specs, TaskKind.FOLLOWUP | 新环境工厂 |
 | 环境缩放 | engine_adapter + mock 回退 | delivery_verifier / \(V_D\) |
 | 协调缩放 | TaskBoard + `follow_up()` | live replan / AgentBus |
 | 非对称验证 | Verifier + static_audit + conservative merge | 深度仍远小于 Statement Review |
-| 轨迹学习 | 无 | trajectory_log, prompt 进化 |
+| 轨迹学习 | trajectory_log (`ToolTrace` / `replay_trace`) | prompt 进化 |
 | 评测归因 | 单测 + verifier tests | working-capability 基准 |
 
-`live_replan` 必须匹配 `class AgentBus` / `async def replan` / `def staged_return`。文档里写「AgentBus is out of scope」不算命中。
+`live_replan` 匹配 `class AgentBus` / `async def replan` / `async def replan_blocked` / `def replan_specs` / `def staged_return`。文档里写「AgentBus is out of scope」不算命中。
 
-PR #2 二次核对（head 仍为 `5212820`）：`Coordinator.verify` / `follow_up` 存在，session 会写 `verification.json`。`LoopBudget` 只是轮次/超时上限。sub_agent 里的 “ReAct trajectory” 是提示词，不是 action/observation 日志。无 Statement Review。轨迹学习预估维持 0。
+PR #3（未合入，head `20a6be9`）探针 19/21，多了 `delivery_verifier`、`live_replan`、`prompt_evolution`。预估综合分约 50，**不得**在合入前记到 main。
 
 ## 历史
 
@@ -140,3 +145,4 @@ PR #2 二次核对（head 仍为 `5212820`）：`Coordinator.verify` / `follow_u
 | 2026-09-04 | `ef03fa5`（main 未变） | 8 | 复核 PR #2 `5212820`：有 `verify`/`follow_up` 和 `verification.json`；无 Statement Review、无可回放轨迹。预估 22 维持。 |
 | 2026-09-04 | `ef03fa5` | 8 | 目标收窄为垂直闭环（momentum factor risk only）。文档顶部改为 status bar：main 8 / PR#2 预估 22。 |
 | 2026-09-04 | `5212820` | 22 | PR #2 合入。探针 14/21。正式分 8→22。轨迹学习仍 0。 |
+| 2026-09-04 | `abd007b` | 30 | PR #5 合入。session ledger + traces。探针 16/21。正式分 22→30。跨 session 消费仍缺。 |
