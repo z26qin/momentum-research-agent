@@ -1,24 +1,43 @@
-# Apodex 自我改进差距评分卡
+# 闭环进度：Momentum Factor Risk Research Agent
 
-常驻评审产物。每次 `main` 有新提交时更新 `last_reviewed_sha` 与各维分数。机器可读副本见同目录 `apodex_gap.json`。
+目标不是通用 Heavy-Duty Solver。目标是 **Apodex 形态的受控闭环**，但垂直只做 US equity **momentum factor risk**（Daniel–Moskowitz crash、crowding、unwind）。credit / macro / flow / technicals 只作为动量尾部的 overlay，不是独立产品线。
 
-对照对象是 Apodex 1.1 的**受控能力开发循环**（[论文](https://arxiv.org/html/2608.23283) §2.5 / 图 2），不是模型自己改权重：
+本仓库绑冻结 DeepSeek API，不做权重 SFT/RL。闭环的系统级等价物：session 失败 → 缺口账本 → 新的动量研究任务 → 可验证引擎环境 → 再规划 → 轨迹 → 改 prompt/工具/任务模板。
+
+## Status
 
 ```
-真实失败 / 评测错误 / 用户反馈
-        ↓
-  能力缺口分类
-        ↓
-  Task Pipeline（下一批任务）
-        ↓
-  Environment Scaling + Agentic Coordination Scaling
-        ↓
-  可回放轨迹 → SFT / agentic RL
-        ↓
-  评测与失败归因 → 下一轮
+目标  Apodex-style closed loop × momentum factor risk only
+main  [██░░░░░░░░░░░░░░░░░░]  8/100   scaffold
+PR#2  [████░░░░░░░░░░░░░░░░] 22/100   未合入：Verifier + 1-round follow-up + engine snapshot
 ```
 
-本仓库绑定冻结的 DeepSeek API，没有权重训练。可对齐的上限是**系统级**自我改进：从 session 进化 prompt、profile、工具和任务模板。
+| | 环节 | main | PR#2 合入后 | 还缺（垂直闭环） |
+| ---: | --- | --- | --- | --- |
+| 1 | 编排骨架 | **有**：TaskBoard、一次分解/并行/综合、ReAct | 同左 | — |
+| 2 | 动量环境 | mock `engine_query` | 读 monitor 快照 | 真 DM 引擎 + 交付合约 \(V_D\) |
+| 3 | 非对称验证 | 无 | 独立 Verifier + static audit | 对 crowding/unwind **断言**做 statement review |
+| 4 | 再规划 | 无 | 一轮 follow-up（最多 2 任务） | 执行中途改共享计划、停支 |
+| 5 | 缺口账本 | `BLOCKED` 字符串 | rejected/unchecked evidence | 跨 session 的动量能力分类 |
+| 6 | 任务工厂 | 每次从用户问题现拆 | 从验证失败长出修补任务 | 从缺口生成下一批动量研究任务/场景 |
+| 7 | 轨迹学习 | 无 | 无 | engine/search 可回放日志 → 进化 prompt/工具 |
+| 8 | 评测回流 | 单测（不打 live API） | + verifier tests | 动量研究交付基准，失败进账本 |
+
+```
+✅ 已在 main
+   磁盘 TaskBoard · 一次 decompose/dispatch/synthesize · 5 个 analyst profile
+   ReAct 工具（web_search / file_reader / market_data / shell）· mock engine_query
+
+🟡 写在 PR#2、未进 main
+   独立 Verifier（只判 evidence_id）· 一轮 follow-up · engine 快照适配器
+   verification.json · LoopBudget（轮次/超时，不是 Max Team Effort）
+
+⬜ 闭环还没做
+   跨 session 缺口账本 · 动量任务工厂 · 真引擎 + V_D
+   活的再规划 · action/observation 轨迹 · 评测驱动下一轮
+```
+
+合入前正式分只跟 `main`。机器可读：`apodex_gap.json`。探针：`python3 scripts/probe_apodex_gap.py origin/main`。
 
 ## 当前基线
 
@@ -143,3 +162,4 @@ PR #2 二次核对（head 仍为 `5212820`）：`Coordinator.verify` / `follow_u
 | 2026-09-04 | `ef03fa5`（main 未变） | 8 | 增加 `scripts/probe_apodex_gap.py`。main 命中 5/21 信号；PR #2 命中 14/21。轨迹学习两边都是 0。 |
 | 2026-09-04 | `ef03fa5`（main 未变） | 8 | 探针加回归测试与 main/PR CI。`live_replan` 不再把「AgentBus out of scope」算命中。 |
 | 2026-09-04 | `ef03fa5`（main 未变） | 8 | 复核 PR #2 `5212820`：有 `verify`/`follow_up` 和 `verification.json`；无 Statement Review、无可回放轨迹。预估 22 维持。 |
+| 2026-09-04 | `ef03fa5` | 8 | 目标收窄为垂直闭环（momentum factor risk only）。文档顶部改为 status bar：main 8 / PR#2 预估 22。 |

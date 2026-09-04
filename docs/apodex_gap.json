@@ -1,6 +1,36 @@
 {
   "schema_version": 1,
-  "purpose": "Standing review of main vs Apodex 1.1 managed self-improvement loop (not unconstrained model self-modification).",
+  "purpose": "Status bar for a vertical Apodex-style closed-loop research agent focused on US equity momentum factor risk (not a general Heavy-Duty Solver).",
+  "target": {
+    "shape": "Apodex 1.1 managed loop: gaps → Task Pipeline → executable environment + coordination → traces → eval → next round",
+    "domain": "US equity momentum factor risk (Daniel-Moskowitz crash, crowding, unwind). Overlay profiles are inputs to that question, not separate products.",
+    "not_in_scope": "General-purpose Heavy-Duty Solver, SFT/RL on DeepSeek weights, AgentBus, unbounded follow-up"
+  },
+  "status_bar": {
+    "main_score": 8,
+    "main_bar": "[██░░░░░░░░░░░░░░░░░░]",
+    "pr2_predicted_score": 22,
+    "pr2_bar": "[████░░░░░░░░░░░░░░░░]",
+    "implemented_on_main": [
+      "disk TaskBoard",
+      "one-shot decompose / parallel dispatch / synthesize",
+      "ReAct + tools",
+      "mock engine_query"
+    ],
+    "implemented_not_on_main": [
+      "independent Verifier + static audit (PR #2)",
+      "one-round follow-up (PR #2)",
+      "engine snapshot adapter (PR #2)"
+    ],
+    "left": [
+      "cross-session momentum gap ledger",
+      "task factory from gaps",
+      "real DM engine + delivery verifier V_D",
+      "live replan / staged return / branch stop",
+      "replayable engine/search traces",
+      "eval that feeds the next loop"
+    ]
+  },
   "baseline_commit": "ef03fa5a5f7020ff7601b4cc241e8f595a74eddb",
   "last_reviewed_sha": "ef03fa5a5f7020ff7601b4cc241e8f595a74eddb",
   "last_reviewed_at": "2026-09-04T14:12:00Z",
