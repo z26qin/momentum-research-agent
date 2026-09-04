@@ -5,7 +5,8 @@ commit 99b0688e982ef82dcbd27072d5284a21963a51db
   outputs/snapshot_2026-05-29/structured_snapshot.json
   outputs/snapshot_2026-06-30/structured_snapshot.json
 
-Do not import that package. engine_query reads these JSON files through
-the file adapter when MOMENTUM_ENGINE_DIR / a sibling checkout is absent.
-A live scripts/run_monitor.py run still wins when warmed into session
-engine_runs/ (delivery_contract V_D can then pass).
+Do not import that package. fixtures/engine/scripts/run_monitor.py replays
+these snapshots through the same CLI as the live monitor
+(`--as-of-date` / `--output-json`) so Coordinator.warm_engine can cache a
+pipeline_run and delivery_contract V_D can pass for those frozen dates.
+A real MOMENTUM_ENGINE_DIR / sibling checkout still wins.

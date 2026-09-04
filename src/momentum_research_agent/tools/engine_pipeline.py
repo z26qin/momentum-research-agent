@@ -2,7 +2,10 @@
 
 Prefers `scripts/run_monitor.py --as-of-date` so engine_query can obtain a
 live PIT assessment from the parquet panels instead of a stale JSON file.
-Timeouts and missing checkouts fail closed to the snapshot / local_dm path.
+Vendored `fixtures/engine` ships the same CLI as a frozen replay stub
+(SOURCE.txt present) so known as-of dates can still set pipeline_run and
+pass V_D without a sibling monitor checkout. Timeouts and missing
+checkouts fail closed to the snapshot / local_dm path.
 """
 
 from __future__ import annotations
@@ -17,6 +20,8 @@ from pathlib import Path
 from typing import Any
 
 from momentum_research_agent.tools.engine_adapter import (
+    frozen_snapshot_dates,
+    is_frozen_replay,
     looks_like_engine,
     normalize_engine_payload,
     resolve_engine_root,
@@ -197,23 +202,36 @@ def warm_monitor(
     project_root: Path | None = None,
     timeout_s: float | None = None,
 ) -> dict[str, Any] | None:
-    """Prefetch a live PIT run so ReAct's 10s tool budget hits cache.
+    """Prefetch a live or frozen-replay PIT run so ReAct's 10s tool budget hits cache.
 
-    No-op when `scripts/run_monitor.py` is absent (bundled JSON snapshots
-    still serve engine_query without a subprocess).
+    Frozen replay (`SOURCE.txt`) also warms every vendored snapshot_* date when
+    `end` is omitted, so engine_query(end=2026-05-29) hits cache. No-op when
+    `scripts/run_monitor.py` is absent.
     """
     if pipeline_disabled() or not engine_has_pipeline(project_root):
         return None
-    peeked = peek_cached_assessment(ticker, start, end, project_root=project_root)
-    if peeked is not None:
-        return peeked
-    return run_monitor_assessment(
-        ticker,
-        start,
-        end,
-        project_root=project_root,
-        timeout_s=warm_timeout_s() if timeout_s is None else timeout_s,
-    )
+    timeout = warm_timeout_s() if timeout_s is None else timeout_s
+    root = resolve_engine_root(project_root)
+    if is_frozen_replay(root) and end is None and root is not None:
+        as_ofs: list[str | None] = frozen_snapshot_dates(root) or [end]
+    else:
+        as_ofs = [end]
+    last: dict[str, Any] | None = None
+    for as_of in as_ofs:
+        peeked = peek_cached_assessment(ticker, start, as_of, project_root=project_root)
+        if peeked is not None:
+            last = peeked
+            continue
+        loaded = run_monitor_assessment(
+            ticker,
+            start,
+            as_of,
+            project_root=project_root,
+            timeout_s=timeout,
+        )
+        if loaded is not None:
+            last = loaded
+    return last
 
 
 def _load_normalized(

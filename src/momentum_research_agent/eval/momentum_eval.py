@@ -6,10 +6,13 @@ the engine delivery contract. No live DeepSeek calls.
 
 from __future__ import annotations
 
+import asyncio
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from momentum_research_agent.config import find_project_root
 from momentum_research_agent.coordinator.gap_seed import append_gaps
 from momentum_research_agent.models.schemas import GapEntry, GapKind
 from momentum_research_agent.tools.engine_adapter import (
@@ -17,8 +20,9 @@ from momentum_research_agent.tools.engine_adapter import (
     normalize_engine_payload,
 )
 from momentum_research_agent.tools.engine_contract import attach_delivery_contract, grade_engine_payload
-from momentum_research_agent.tools.engine_query import _mock_state
+from momentum_research_agent.tools.engine_query import _mock_state, engine_query
 from momentum_research_agent.tools.local_dm import geometric_closes, score_from_closes
+from momentum_research_agent.tools.registry import ToolContext, set_tool_context
 
 EVAL_SESSION_ID = "eval"
 
@@ -37,6 +41,8 @@ class EvalCase:
     expect_as_of_match: bool | None = None
     mock: bool = False
     bundled: bool = False
+    via_query: bool = False
+    expect_pipeline_run: bool | None = None
 
 
 @dataclass
@@ -170,18 +176,47 @@ CASES: tuple[EvalCase, ...] = (
         expect_contract="pass_with_caveats",
         expect_as_of_match=True,
     ),
+    EvalCase(
+        id="bundled_pipeline_replay",
+        ticker="NVDA",
+        end="2026-05-29",
+        via_query=True,
+        expect_source="momentum-tail-risk-monitor",
+        expect_risk_state="normal",
+        expect_regime="FRAGILITY_BUILDING",
+        expect_contract="pass",
+        expect_as_of_match=True,
+        expect_pipeline_run=True,
+    ),
 )
 
 
 def run_eval(project_root: Path, *, write_ledger: bool = True) -> EvalSummary:
-    results = [_run_case(case) for case in CASES]
+    results = [_run_case(case, project_root=project_root) for case in CASES]
     written = 0
     if write_ledger:
         written = _append_failures(project_root, results)
     return EvalSummary(results=results, written=written)
 
 
-def _run_case(case: EvalCase) -> EvalResult:
+def _engine_query_payload(
+    ticker: str,
+    end: str | None,
+    *,
+    project_root: Path | None = None,
+) -> dict[str, Any]:
+    from momentum_research_agent.tools.engine_pipeline import clear_pipeline_cache
+
+    root = project_root or find_project_root()
+    session_dir = root / "reports" / "eval"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    set_tool_context(ToolContext(project_root=root, session_dir=session_dir))
+    clear_pipeline_cache()
+    raw = asyncio.run(engine_query(ticker, end=end))
+    return json.loads(raw)
+
+
+def _run_case(case: EvalCase, *, project_root: Path | None = None) -> EvalResult:
     if case.payload is not None:
         payload = attach_delivery_contract(case.payload, requested_end=case.end)
     elif case.mock:
@@ -194,6 +229,17 @@ def _run_case(case: EvalCase) -> EvalResult:
             ),
             requested_end=case.end,
         )
+    elif case.via_query:
+        try:
+            payload = _engine_query_payload(
+                case.ticker, case.end, project_root=project_root
+            )
+        except Exception as exc:  # pragma: no cover - subprocess / context failures
+            return EvalResult(
+                case.id,
+                passed=False,
+                reasons=[f"engine_query error: {exc}"],
+            )
     elif case.bundled:
         loaded = load_bundled_engine_state(case.ticker, end=case.end)
         if loaded is None:
@@ -230,6 +276,13 @@ def _run_case(case: EvalCase) -> EvalResult:
     ):
         reasons.append(
             f"as_of_match {payload.get('as_of_match')!r} != {case.expect_as_of_match!r}"
+        )
+    if (
+        case.expect_pipeline_run is not None
+        and payload.get("pipeline_run") is not case.expect_pipeline_run
+    ):
+        reasons.append(
+            f"pipeline_run {payload.get('pipeline_run')!r} != {case.expect_pipeline_run!r}"
         )
     verdict = contract.get("verdict") if isinstance(contract, dict) else None
     if case.expect_contract is not None and verdict != case.expect_contract:

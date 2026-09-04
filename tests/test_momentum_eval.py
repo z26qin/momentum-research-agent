@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from momentum_research_agent.eval.momentum_eval import (
     CASES,
     EvalResult,
@@ -10,14 +12,6 @@ from momentum_research_agent.eval.momentum_eval import (
 )
 from momentum_research_agent.coordinator.gap_seed import load_rows
 from momentum_research_agent.models.schemas import GapLedgerStatus, MomentumCapability
-
-
-def test_frozen_cases_pass_without_ledger(tmp_path: Path) -> None:
-    summary = run_eval(tmp_path, write_ledger=False)
-    assert summary.failed == 0
-    assert summary.passed == len(CASES)
-    assert summary.written == 0
-    assert load_rows(tmp_path) == []
 
 
 def test_eval_failures_append_to_ledger(tmp_path: Path) -> None:
@@ -47,3 +41,19 @@ def test_eval_failures_append_to_ledger(tmp_path: Path) -> None:
 
 def test_eval_includes_bundled_snapshot_case() -> None:
     assert any(case.id == "bundled_snapshot_2026_05_29" and case.bundled for case in CASES)
+    assert any(
+        case.id == "bundled_pipeline_replay" and case.via_query for case in CASES
+    )
+
+
+def test_frozen_cases_pass_without_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("MOMENTUM_ENGINE_DIR", raising=False)
+    monkeypatch.delenv("MOMENTUM_ENGINE_SNAPSHOT", raising=False)
+    monkeypatch.delenv("MOMENTUM_DISABLE_PIPELINE", raising=False)
+    summary = run_eval(tmp_path, write_ledger=False)
+    assert summary.failed == 0
+    assert summary.passed == len(CASES)
+    assert summary.written == 0
+    assert load_rows(tmp_path) == []

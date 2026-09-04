@@ -13,7 +13,9 @@ from momentum_research_agent.tools.engine_adapter import (
     DM_BEAR_STATES,
     DM_PRIMARY_STATES,
     MECHANICAL_UNWIND_REGIMES,
+    is_frozen_replay,
     load_engine_state,
+    resolve_engine_root,
 )
 from momentum_research_agent.tools.engine_contract import attach_delivery_contract
 from momentum_research_agent.tools.engine_pipeline import (
@@ -65,13 +67,16 @@ def _project_root() -> Path | None:
         "risk state (normal | bear_low_volatility | panic_elevated), mechanical "
         "unwind regime, and crowding overlays. Prefers a warmed live PIT run of "
         "momentum-tail-risk-monitor (`scripts/run_monitor.py` via MOMENTUM_ENGINE_DIR "
-        "or a sibling checkout) when Coordinator.warm_engine cached it. Matching "
-        "JSON snapshots (including fixtures/engine frozen 2026-05-29 / 2026-06-30) "
-        "are the fast path. If neither exists, runs a local Daniel–Moskowitz "
-        "scorer on SPY + ticker closes (24m bear market + 6m vol → risk_state; "
-        "1m drawdown → unwind). Each payload includes delivery_contract V_D "
-        "(pass | pass_with_caveats | fail). Labeled mock only if snapshot, "
-        "pipeline, and local scorer are all unavailable."
+        "or a sibling checkout) when Coordinator.warm_engine cached it. Frozen "
+        "replay (fixtures/engine SOURCE.txt + scripts/run_monitor.py) runs that "
+        "same CLI for vendored 2026-05-29 / 2026-06-30 dates so V_D can pass "
+        "without a sibling checkout. A live monitor checkout still prefers a "
+        "matching JSON snapshot unless a warmed pipeline payload is cached. If "
+        "neither exists, runs a local Daniel–Moskowitz scorer on SPY + ticker "
+        "closes (24m bear market + 6m vol → risk_state; 1m drawdown → unwind). "
+        "Each payload includes delivery_contract V_D (pass | pass_with_caveats "
+        "| fail). Labeled mock only if snapshot, pipeline, and local scorer "
+        "are all unavailable."
     ),
     parameters={
         "type": "object",
@@ -97,18 +102,22 @@ async def engine_query(ticker: str, start: str | None = None, end: str | None = 
     payload = peek_cached_assessment(ticker, start, end, project_root=root)
     live = None
     if payload is None:
-        live = load_engine_state(ticker, start, end, project_root=root)
-        payload = live if live is not None and live.get("as_of_match", True) else None
-    if payload is None:
-        payload = await asyncio.to_thread(
-            run_monitor_assessment,
-            ticker,
-            start,
-            end,
-            project_root=root,
-        )
-    if payload is None and live is not None:
-        payload = live
+        frozen = is_frozen_replay(resolve_engine_root(root))
+        if not frozen:
+            live = load_engine_state(ticker, start, end, project_root=root)
+            payload = live if live is not None and live.get("as_of_match", True) else None
+        if payload is None:
+            payload = await asyncio.to_thread(
+                run_monitor_assessment,
+                ticker,
+                start,
+                end,
+                project_root=root,
+            )
+        if payload is None:
+            if live is None:
+                live = load_engine_state(ticker, start, end, project_root=root)
+            payload = live
     if payload is None:
         payload = await asyncio.to_thread(score_local_dm, ticker, start, end)
     if payload is None:

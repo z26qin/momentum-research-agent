@@ -4,8 +4,9 @@ The engine is a PIT parquet pipeline, not a ticker API. This adapter maps
 JSON snapshots (latest_assessment, structured_snapshot, evidence cards)
 into the engine_query contract — including the frozen cases vendored at
 `fixtures/engine/`. A live `scripts/run_monitor.py` subprocess is preferred
-when warmed or when the snapshot as_of does not match. Missing files fall
-back to local_dm / mock. Do not import that package.
+when warmed, when the tree is a frozen replay (SOURCE.txt), or when the
+snapshot as_of does not match. Missing files fall back to local_dm / mock.
+Do not import that package.
 """
 
 from __future__ import annotations
@@ -31,6 +32,22 @@ def looks_like_engine(path: Path | None) -> bool:
         or (path / "outputs").is_dir()
         or (path / "data" / "processed").is_dir()
     )
+
+
+def is_frozen_replay(root: Path | None) -> bool:
+    """Vendored snapshot tree (SOURCE.txt + stub run_monitor.py), not a live checkout."""
+    return bool(root and (root / "SOURCE.txt").is_file())
+
+
+def frozen_snapshot_dates(root: Path) -> list[str]:
+    dates: list[str] = []
+    outputs = root / "outputs"
+    if not outputs.is_dir():
+        return dates
+    for path in sorted(outputs.glob("snapshot_*")):
+        if (path / "structured_snapshot.json").is_file():
+            dates.append(path.name.removeprefix("snapshot_"))
+    return dates
 
 
 def bundled_engine_root(project_root: Path | None = None) -> Path | None:
